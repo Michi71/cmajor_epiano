@@ -645,8 +645,8 @@ processor PickupModel
         dist    = p.pickupDistance;
         inGain  = p.pickupInputGain;
         outGain = p.pickupOutputGain;
-        nonlin  = p.pickupNonlinearity * 0.01f;
-        bark    = p.pickupBarkAmount * 0.01f;
+        nonlin  = p.pickupNonlinearity * 0.01f;  // 30% init -> 0.3
+        bark    = p.pickupBarkAmount * 0.01f;    // 20% init -> 0.2
     }
 
     void main()
@@ -662,8 +662,10 @@ processor PickupModel
                 x = x * (1.0f + sym * 0.15f);
                 
                 // Nichtlineare Interaktion zwischen Zunge und Pickup
+                // Scaling factor für harmonische Verzerrung
+                let nonlinearScaling = 0.3f;
                 float32 squared = x * x;
-                x = x + (squared * sign(x) * nonlin * 0.3f);
+                x = x + (squared * sign(x) * nonlin * nonlinearScaling);
                 
                 // Pickup-Distanz beeinflusst Amplitude und Obertöne
                 x = x * (1.0f - dist * 0.2f);
@@ -680,8 +682,10 @@ processor PickupModel
                 // Sanfte Übersteuerung (typisch für Vintage Rhodes Amps)
                 if (bark > 0.01f)
                 {
+                    let ampDriveGain = 1.2f;      // Verstärkung vor Clipping
+                    let ampOutputScale = 0.9f;    // Abschwächung nach Clipping
                     float32 driven = x * (1.0f + bark * 0.5f);
-                    x = tanh(driven * 1.2f) * 0.9f;
+                    x = tanh(driven * ampDriveGain) * ampOutputScale;
                 }
             }
             else
@@ -967,7 +971,8 @@ processor ChorusEffect
     float32 rate  = 0.5f;
     float32 mix   = 0.3f;
 
-    // Delay-Buffer für Chorus (benötigt etwa 50ms bei 44.1kHz = ~2200 Samples)
+    // Delay-Buffer für Chorus (4096 samples = ~93ms bei 44.1kHz)
+    // Ausreichend für Chorus-Effekt (typisch 5-25ms Delay)
     float32[4096] delayBuffer;
     int writePos = 0;
     
@@ -1097,8 +1102,8 @@ processor PhaserEffect
             let centerFreq = minFreq + (maxFreq - minFreq) * (0.5f + depth * 0.5f * lfo);
             
             // Vereinfachter All-Pass-Koeffizient
-            let coefficient = (centerFreq * twoPi / float32(processor.frequency) - 1.0f) 
-                            / (centerFreq * twoPi / float32(processor.frequency) + 1.0f);
+            let normalizedFreq = centerFreq * twoPi / float32(processor.frequency);
+            let coefficient = (normalizedFreq - 1.0f) / (normalizedFreq + 1.0f);
 
             // Kaskade von All-Pass-Filtern (6 Stages)
             float32 filtered = x;

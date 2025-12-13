@@ -252,41 +252,41 @@ namespace Instrument
 
             if (i == 0) // Rhodes
             {
-                params.brightness        = 60.0f;
-                params.velocityScaling   = 70.0f;
+                params.brightness        = 50.0f;  // reduziert von 60
+                params.velocityScaling   = 60.0f;  // reduziert von 70
                 params.decayRate         = 15.0f;
                 params.harmonicDecayRate = 25.0f;
                 params.keyScaling        = 40.0f;
                 params.releaseRate       = 50.0f;
-                params.vibratoDepth      = 15.0f;
+                params.vibratoDepth      = 12.0f;  // reduziert von 15
                 params.vibratoRate       = 40.0f;
 
                 params.pickupType        = 0;
                 params.pickupSymmetry    = 0.0f;
                 params.pickupDistance    = 0.4f;
-                params.pickupInputGain   = 1.0f;
-                params.pickupOutputGain  = 1.2f;
-                params.pickupNonlinearity= 35.0f;
-                params.pickupBarkAmount  = 25.0f;
+                params.pickupInputGain   = 0.9f;   // reduziert von 1.0
+                params.pickupOutputGain  = 1.0f;   // reduziert von 1.2
+                params.pickupNonlinearity= 25.0f;  // reduziert von 35
+                params.pickupBarkAmount  = 15.0f;  // reduziert von 25
 
-                params.hammerStiffness   = 60.0f;
-                params.hammerStrength    = 55.0f;
-                params.hammerNoise       = 10.0f;
+                params.hammerStiffness   = 50.0f;  // reduziert von 60
+                params.hammerStrength    = 50.0f;  // reduziert von 55
+                params.hammerNoise       = 8.0f;   // reduziert von 10
 
                 params.forkDecay         = 50.0f;
-                params.forkVolume        = 60.0f;
+                params.forkVolume        = 55.0f;  // reduziert von 60
                 params.forkToneColor     = 40.0f;
-                params.forkRingTime      = 30.0f;
-                params.forkResonance     = 45.0f;
+                params.forkRingTime      = 25.0f;  // reduziert von 30
+                params.forkResonance     = 35.0f;  // reduziert von 45
 
                 params.damperTone        = 50.0f;
                 params.damperAttack      = 20.0f;
                 params.damperRelease     = 25.0f;
                 params.damperLevel       = 30.0f;
 
-                params.chorusDepth       = 35.0f;
+                params.chorusDepth       = 30.0f;  // reduziert von 35
                 params.chorusRate        = 45.0f;
-                params.chorusMix         = 25.0f;
+                params.chorusMix         = 20.0f;  // reduziert von 25
 
                 params.phaserDepth       = 40.0f;
                 params.phaserRate        = 35.0f;
@@ -295,41 +295,41 @@ namespace Instrument
             }
             if (i == 1) // Wurlitzer
             {
-                params.brightness        = 45.0f;
-                params.velocityScaling   = 60.0f;
+                params.brightness        = 40.0f;  // reduziert von 45
+                params.velocityScaling   = 55.0f;  // reduziert von 60
                 params.decayRate         = 20.0f;
                 params.harmonicDecayRate = 30.0f;
                 params.keyScaling        = 50.0f;
                 params.releaseRate       = 65.0f;
-                params.vibratoDepth      = 20.0f;
+                params.vibratoDepth      = 15.0f;  // reduziert von 20
                 params.vibratoRate       = 35.0f;
 
                 params.pickupType        = 0;
-                params.pickupSymmetry    = 0.2f;
+                params.pickupSymmetry    = 0.15f;  // reduziert von 0.2
                 params.pickupDistance    = 0.6f;
-                params.pickupInputGain   = 1.2f;
+                params.pickupInputGain   = 1.0f;   // reduziert von 1.2
                 params.pickupOutputGain  = 1.0f;
-                params.pickupNonlinearity= 40.0f;
-                params.pickupBarkAmount  = 15.0f;
+                params.pickupNonlinearity= 30.0f;  // reduziert von 40
+                params.pickupBarkAmount  = 12.0f;  // reduziert von 15
 
-                params.hammerStiffness   = 70.0f;
-                params.hammerStrength    = 60.0f;
-                params.hammerNoise       = 15.0f;
+                params.hammerStiffness   = 60.0f;  // reduziert von 70
+                params.hammerStrength    = 55.0f;  // reduziert von 60
+                params.hammerNoise       = 12.0f;  // reduziert von 15
 
                 params.forkDecay         = 55.0f;
-                params.forkVolume        = 55.0f;
-                params.forkToneColor     = 60.0f;
-                params.forkRingTime      = 40.0f;
-                params.forkResonance     = 35.0f;
+                params.forkVolume        = 50.0f;  // reduziert von 55
+                params.forkToneColor     = 55.0f;  // reduziert von 60
+                params.forkRingTime      = 35.0f;  // reduziert von 40
+                params.forkResonance     = 30.0f;  // reduziert von 35
 
                 params.damperTone        = 60.0f;
                 params.damperAttack      = 25.0f;
                 params.damperRelease     = 30.0f;
                 params.damperLevel       = 35.0f;
 
-                params.chorusDepth       = 30.0f;
+                params.chorusDepth       = 25.0f;  // reduziert von 30
                 params.chorusRate        = 40.0f;
-                params.chorusMix         = 20.0f;
+                params.chorusMix         = 15.0f;  // reduziert von 20
 
                 params.phaserDepth       = 35.0f;
                 params.phaserRate        = 30.0f;
@@ -381,46 +381,46 @@ namespace Instrument
             }
             if (i == 3) // Chorus EP
             {
-                params.brightness        = 65.0f;
-                params.velocityScaling   = 55.0f;
+                params.brightness        = 55.0f;  // reduziert von 65
+                params.velocityScaling   = 50.0f;  // reduziert von 55
                 params.decayRate         = 25.0f;
                 params.harmonicDecayRate = 30.0f;
                 params.keyScaling        = 50.0f;
                 params.releaseRate       = 60.0f;
-                params.vibratoDepth      = 40.0f;
+                params.vibratoDepth      = 30.0f;  // reduziert von 40
                 params.vibratoRate       = 60.0f;
 
                 params.pickupType        = 0;
                 params.pickupSymmetry    = 0.0f;
                 params.pickupDistance    = 0.5f;
-                params.pickupInputGain   = 1.0f;
+                params.pickupInputGain   = 0.9f;   // reduziert von 1.0
                 params.pickupOutputGain  = 1.0f;
-                params.pickupNonlinearity= 30.0f;
-                params.pickupBarkAmount  = 20.0f;
+                params.pickupNonlinearity= 25.0f;  // reduziert von 30
+                params.pickupBarkAmount  = 15.0f;  // reduziert von 20
 
-                params.hammerStiffness   = 55.0f;
-                params.hammerStrength    = 50.0f;
-                params.hammerNoise       = 12.0f;
+                params.hammerStiffness   = 50.0f;  // reduziert von 55
+                params.hammerStrength    = 45.0f;  // reduziert von 50
+                params.hammerNoise       = 10.0f;  // reduziert von 12
 
                 params.forkDecay         = 60.0f;
-                params.forkVolume        = 65.0f;
-                params.forkToneColor     = 55.0f;
-                params.forkRingTime      = 45.0f;
-                params.forkResonance     = 50.0f;
+                params.forkVolume        = 60.0f;  // reduziert von 65
+                params.forkToneColor     = 50.0f;  // reduziert von 55
+                params.forkRingTime      = 40.0f;  // reduziert von 45
+                params.forkResonance     = 40.0f;  // reduziert von 50
 
                 params.damperTone        = 55.0f;
                 params.damperAttack      = 20.0f;
                 params.damperRelease     = 25.0f;
                 params.damperLevel       = 25.0f;
 
-                params.chorusDepth       = 60.0f;
+                params.chorusDepth       = 50.0f;  // reduziert von 60
                 params.chorusRate        = 55.0f;
-                params.chorusMix         = 50.0f;
+                params.chorusMix         = 40.0f;  // reduziert von 50
 
                 params.phaserDepth       = 45.0f;
                 params.phaserRate        = 40.0f;
                 params.phaserFeedback    = 30.0f;
-                params.phaserMix         = 20.0f;
+                params.phaserMix         = 15.0f;  // reduziert von 20
             }
 
             paramsOut <- params;
@@ -658,51 +658,50 @@ processor PickupModel
             // Asymmetrische Pickup-Position (typisch für Rhodes)
             if (type == 0)
             {
-                // Elektromagnetisch mit Asymmetrie
-                x = x * (1.0f + sym * 0.15f);
+                // Elektromagnetisch mit Asymmetrie - reduziert für natürlicheren Klang
+                x = x * (1.0f + sym * 0.08f);
                 
-                // Nichtlineare Interaktion zwischen Zunge und Pickup
-                // Scaling factor für harmonische Verzerrung
-                let nonlinearScaling = 0.3f;
+                // Sanftere nichtlineare Interaktion zwischen Zunge und Pickup
+                // Reduzierte Skalierung für weniger Verzerrung
+                let nonlinearScaling = 0.12f;  // reduziert von 0.3
                 float32 squared = x * x;
                 x = x + (squared * sign(x) * nonlin * nonlinearScaling);
                 
-                // Pickup-Distanz beeinflusst Amplitude und Obertöne
-                x = x * (1.0f - dist * 0.2f);
+                // Pickup-Distanz beeinflusst Amplitude sanfter
+                x = x * (1.0f - dist * 0.15f);
                 
-                // "Bark"-Effekt: Resonanz und leichte Übersteuerung
-                // Dies simuliert die Pickup-Zunge-Interaktion
+                // Reduzierter "Bark"-Effekt für weniger Nebentöne
                 float32 derivative = x - prevSample;
-                resonanceState = resonanceState * 0.98f + derivative * bark * 0.5f;
+                resonanceState = resonanceState * 0.992f + derivative * bark * 0.15f;  // reduziert
                 
-                // Soft clipping für den typischen Rhodes "Growl"
-                float32 barkContribution = resonanceState * (1.0f + abs(x) * 0.5f);
+                // Sanfterer Bark-Beitrag ohne Amplitudenabhängigkeit
+                float32 barkContribution = resonanceState * 0.4f;  // stark reduziert
                 x = x + barkContribution;
                 
-                // Sanfte Übersteuerung (typisch für Vintage Rhodes Amps)
-                if (bark > 0.01f)
+                // Sanfte Sättigung nur bei höheren Bark-Werten
+                if (bark > 0.15f)
                 {
-                    let ampDriveGain = 1.2f;      // Verstärkung vor Clipping
-                    let ampOutputScale = 0.9f;    // Abschwächung nach Clipping
-                    float32 driven = x * (1.0f + bark * 0.5f);
+                    let ampDriveGain = 1.05f;     // stark reduziert von 1.2
+                    let ampOutputScale = 0.95f;   // weniger Abschwächung
+                    float32 driven = x * (1.0f + bark * 0.2f);  // reduziert
                     x = tanh(driven * ampDriveGain) * ampOutputScale;
                 }
             }
             else
             {
-                // Elektrostatisch (Wurlitzer-Style)
-                x = x * (1.0f + sym * 0.25f);
+                // Elektrostatisch (Wurlitzer-Style) - sanfter für natürlicheren Klang
+                x = x * (1.0f + sym * 0.15f);  // reduziert
                 
-                // Wurlitzer hat stärkere Nichtlinearität
-                x = tanh(x * (1.0f + nonlin * 0.8f));
+                // Wurlitzer mit moderater Nichtlinearität
+                x = tanh(x * (1.0f + nonlin * 0.4f));  // reduziert von 0.8
                 
-                // Distanzabhängige Dämpfung
-                x = x * (1.0f - dist * 0.4f);
+                // Distanzabhängige Dämpfung sanfter
+                x = x * (1.0f - dist * 0.25f);  // reduziert
                 
-                // Wurlitzer "Reed Bark" - anders als Rhodes
+                // Wurlitzer "Reed Bark" - reduziert für weniger Nebentöne
                 float32 derivative = x - prevSample;
-                resonanceState = resonanceState * 0.96f + derivative * bark * 0.4f;
-                x = x + resonanceState * 0.7f;
+                resonanceState = resonanceState * 0.98f + derivative * bark * 0.2f;  // reduziert
+                x = x + resonanceState * 0.4f;  // reduziert
             }
 
             prevSample = x;
@@ -757,19 +756,21 @@ processor HammerModel
         {
             float32 x = in;
 
-            // Härte
-            x = x * (1.0f + stiff * 0.5f);
-            x = tanh(x);
+            // Sanftere Härte für weniger Verzerrung
+            x = x * (0.9f + stiff * 0.3f);  // reduziert
+            
+            // Weichere Sättigung
+            x = tanh(x * 0.9f) * 1.05f;  // sanfter
 
-            // Stärke
-            x = x * (0.5f + str);
+            // Moderatere Stärke für bessere Gain-Staging
+            x = x * (0.7f + str * 0.25f);  // angepasst
 
             // Noise nur wenn NoiseEnv > 0
             if (noiseEnv > 0.001f)
             {
-                float32 burst = rng.getBipolar() * noi * noiseEnv * 0.1f;
+                float32 burst = rng.getBipolar() * noi * noiseEnv * 0.05f;  // reduziert
                 x += burst;
-                noiseEnv *= 0.95f; // Decay
+                noiseEnv *= 0.96f; // langsamerer Decay
             }
 
             out <- x;
@@ -814,35 +815,35 @@ processor ForkModel
         {
             float32 x = in;
 
-            // Decay mit nichtlinearem Verhalten
-            state = state * (1.0f - decay * 0.01f) + x;
+            // Sanfterer Decay für stabileres Verhalten
+            state = state * (0.998f - decay * 0.005f) + x * 0.8f;  // reduzierte Input-Gain
             
-            // Mehrfache Resonanzketten (simuliert verschiedene Zungen-Modi)
-            // Diese erzeugen die komplexen Obertöne eines echten E-Pianos
-            resonance1 = resonance1 * (0.995f - reso * 0.05f) + state * reso * 0.3f;
-            resonance2 = resonance2 * (0.990f - reso * 0.08f) + state * reso * 0.2f;
-            resonance3 = resonance3 * (0.985f - reso * 0.10f) + state * reso * 0.1f;
+            // Reduzierte Resonanzketten für weniger Nebentöne
+            // Diese erzeugen die Obertöne eines echten E-Pianos, aber moderater
+            resonance1 = resonance1 * (0.997f - reso * 0.02f) + state * reso * 0.15f;  // reduziert
+            resonance2 = resonance2 * (0.995f - reso * 0.03f) + state * reso * 0.10f;  // reduziert
+            resonance3 = resonance3 * (0.993f - reso * 0.04f) + state * reso * 0.05f;  // reduziert
 
-            // Kombiniere Hauptsignal mit Resonanzen
-            x = state + resonance1 + resonance2 * 0.7f + resonance3 * 0.5f;
+            // Kombiniere Hauptsignal mit reduzierten Resonanzen
+            x = state * 0.7f + resonance1 * 0.5f + resonance2 * 0.3f + resonance3 * 0.2f;
 
-            // Nichtlineare Interaktion bei hohen Amplituden (typisch für E-Piano)
-            if (abs(x) > 0.5f)
+            // Sanfte Kompression statt harter Begrenzung
+            if (abs(x) > 0.6f)
             {
-                float32 excess = abs(x) - 0.5f;
-                x = x - sign(x) * excess * reso * 0.3f;
+                float32 excess = abs(x) - 0.6f;
+                x = sign(x) * (0.6f + tanh(excess * 2.0f) * 0.3f);  // Soft limit
             }
 
-            // Lautstärke
-            x = x * (0.5f + vol);
+            // Lautstärke mit besserer Balance
+            x = x * (0.6f + vol * 0.35f);  // reduziert
 
-            // Klangfarbe mit verbesserter Filterung
-            float32 low  = x * (1.0f - tone);
-            float32 high = tanh(x * 1.5f) * tone;
+            // Sanftere Klangfarben-Filterung
+            float32 low  = x * (1.0f - tone * 0.7f);
+            float32 high = tanh(x * 1.2f) * tone * 0.7f;  // sanfter
             x = low + high;
 
-            // RingTime - beeinflusst Nachhall und Sustain
-            x = x + state * ring * 0.05f;
+            // Reduzierter RingTime-Einfluss
+            x = x + state * ring * 0.02f;  // stark reduziert
 
             out <- x;
             advance();
@@ -929,8 +930,8 @@ processor Tremolo
         // Vibrato-Rate: Anzahl Frames pro Halbwelle
         frames = float32 (processor.frequency) / (1.0f + (p.vibratoRate * 0.1f));
 
-        // Vibrato-Tiefe: Amplitudenabweichung
-        depth = p.vibratoDepth * 0.005f;   // etwas feinfühliger Skalierungsfaktor
+        // Vibrato-Tiefe: Amplitudenabweichung - reduziert für natürlicheren Klang
+        depth = p.vibratoDepth * 0.003f;   // reduziert von 0.005
     }
 
     void stepTo (float32 target)
@@ -939,10 +940,27 @@ processor Tremolo
 
         loop (int (frames))
         {
-            out <- float<2> (in * current, in * (1.0f - current));
+            // Sanftes Soft-Limiting am Ausgang
+            float32 left = in * current;
+            float32 right = in * (1.0f - current);
+            
+            // Soft limiter für beide Kanäle
+            if (abs(left) > 0.95f)
+                left = sign(left) * (0.95f + tanh((abs(left) - 0.95f) * 10.0f) * 0.05f);
+            if (abs(right) > 0.95f)
+                right = sign(right) * (0.95f + tanh((abs(right) - 0.95f) * 10.0f) * 0.05f);
+            
+            out <- float<2> (left, right);
             current += step;
             advance();
         }
+    }
+    
+    float32 sign(float32 val)
+    {
+        if (val > 0.0f) return 1.0f;
+        if (val < 0.0f) return -1.0f;
+        return 0.0f;
     }
 
     void main()

@@ -28,6 +28,8 @@ graph ElectricPiano  [[ main ]]
         hammer = HammerModel;
         fork   = ForkModel;
         damper = DamperModel;
+        chorus = ChorusEffect;
+        phaser = PhaserEffect;
         tremolo= Tremolo;
     }
 
@@ -38,13 +40,15 @@ graph ElectricPiano  [[ main ]]
 
         paramsProcessor.paramsOut -> voices.paramsIn, pickup.paramsIn, 
                                      hammer.paramsIn, fork.paramsIn, damper.paramsIn, 
-                                     tremolo.paramsIn;
+                                     chorus.paramsIn, phaser.paramsIn, tremolo.paramsIn;
 
         voices.audioOut -> pickup.in;
         pickup.out      -> hammer.in;
         hammer.out      -> fork.in;
         fork.out        -> damper.in;
-        damper.out      -> tremolo.in;
+        damper.out      -> chorus.in;
+        chorus.out      -> phaser.in;
+        phaser.out      -> tremolo.in;
         tremolo.out     -> audioOut;
 
         // Damper bekommt Note-Events
@@ -76,6 +80,8 @@ namespace Instrument
         float pickupDistance;
         float pickupInputGain;
         float pickupOutputGain;
+        float pickupNonlinearity;
+        float pickupBarkAmount;
 
         // Hammer
         float hammerStiffness;
@@ -87,12 +93,24 @@ namespace Instrument
         float forkVolume;
         float forkToneColor;
         float forkRingTime;
+        float forkResonance;
 
         // Damper
         float damperTone;
         float damperAttack;
         float damperRelease;
         float damperLevel;
+
+        // Chorus
+        float chorusDepth;
+        float chorusRate;
+        float chorusMix;
+
+        // Phaser
+        float phaserDepth;
+        float phaserRate;
+        float phaserFeedback;
+        float phaserMix;
 
         // Preset
         int presetIndex;
@@ -189,6 +207,8 @@ namespace Instrument
         input event float pickupDistance    [[ name: "Pickup Distance",     min: 0.0, max: 1.0, init: 0.5 ]];
         input event float pickupInputGain   [[ name: "Pickup Input Gain",   min: 0.0, max: 2.0, init: 1.0 ]];
         input event float pickupOutputGain  [[ name: "Pickup Output Gain",  min: 0.0, max: 2.0, init: 1.0 ]];
+        input event float pickupNonlinearity[[ name: "Pickup Nonlinearity", min: 0.0, max: 100.0, init: 30, unit: "%" ]];
+        input event float pickupBarkAmount  [[ name: "Pickup Bark Amount",  min: 0.0, max: 100.0, init: 20, unit: "%" ]];
 
         // --- Hammer ---
         input event float hammerStiffness   [[ name: "Hammer Stiffness",    min: 0.0, max: 100.0, init: 50, unit: "%" ]];
@@ -200,12 +220,24 @@ namespace Instrument
         input event float forkVolume        [[ name: "Fork Volume",         min: 0.0, max: 100.0, init: 50, unit: "%" ]];
         input event float forkToneColor     [[ name: "Fork Tone",           min: 0.0, max: 100.0, init: 50, unit: "%" ]];
         input event float forkRingTime      [[ name: "Fork RingTime",       min: 0.0, max: 100.0, init: 50, unit: "%" ]];
+        input event float forkResonance     [[ name: "Fork Resonance",      min: 0.0, max: 100.0, init: 40, unit: "%" ]];
 
         // --- Damper ---
         input event float damperTone        [[ name: "Damper Tone",         min: 0.0, max: 100.0, init: 50, unit: "%" ]];
         input event float damperAttack      [[ name: "Damper Attack",       min: 0.0, max: 100.0, init: 20, unit: "%" ]];
         input event float damperRelease     [[ name: "Damper Release",      min: 0.0, max: 100.0, init: 20, unit: "%" ]];
         input event float damperLevel       [[ name: "Damper Level",        min: 0.0, max: 100.0, init: 30, unit: "%" ]];
+
+        // --- Chorus ---
+        input event float chorusDepth       [[ name: "Chorus Depth",        min: 0.0, max: 100.0, init: 40, unit: "%" ]];
+        input event float chorusRate        [[ name: "Chorus Rate",         min: 0.0, max: 100.0, init: 50, unit: "%" ]];
+        input event float chorusMix         [[ name: "Chorus Mix",          min: 0.0, max: 100.0, init: 30, unit: "%" ]];
+
+        // --- Phaser ---
+        input event float phaserDepth       [[ name: "Phaser Depth",        min: 0.0, max: 100.0, init: 50, unit: "%" ]];
+        input event float phaserRate        [[ name: "Phaser Rate",         min: 0.0, max: 100.0, init: 40, unit: "%" ]];
+        input event float phaserFeedback    [[ name: "Phaser Feedback",     min: 0.0, max: 100.0, init: 30, unit: "%" ]];
+        input event float phaserMix         [[ name: "Phaser Mix",          min: 0.0, max: 100.0, init: 0, unit: "%" ]];
 
         // --- Output ---
         output event Instrument::Params paramsOut;
@@ -234,6 +266,8 @@ namespace Instrument
                 params.pickupDistance    = 0.4f;
                 params.pickupInputGain   = 1.0f;
                 params.pickupOutputGain  = 1.2f;
+                params.pickupNonlinearity= 35.0f;
+                params.pickupBarkAmount  = 25.0f;
 
                 params.hammerStiffness   = 60.0f;
                 params.hammerStrength    = 55.0f;
@@ -243,11 +277,21 @@ namespace Instrument
                 params.forkVolume        = 60.0f;
                 params.forkToneColor     = 40.0f;
                 params.forkRingTime      = 30.0f;
+                params.forkResonance     = 45.0f;
 
                 params.damperTone        = 50.0f;
                 params.damperAttack      = 20.0f;
                 params.damperRelease     = 25.0f;
                 params.damperLevel       = 30.0f;
+
+                params.chorusDepth       = 35.0f;
+                params.chorusRate        = 45.0f;
+                params.chorusMix         = 25.0f;
+
+                params.phaserDepth       = 40.0f;
+                params.phaserRate        = 35.0f;
+                params.phaserFeedback    = 25.0f;
+                params.phaserMix         = 0.0f;
             }
             if (i == 1) // Wurlitzer
             {
@@ -265,6 +309,8 @@ namespace Instrument
                 params.pickupDistance    = 0.6f;
                 params.pickupInputGain   = 1.2f;
                 params.pickupOutputGain  = 1.0f;
+                params.pickupNonlinearity= 40.0f;
+                params.pickupBarkAmount  = 15.0f;
 
                 params.hammerStiffness   = 70.0f;
                 params.hammerStrength    = 60.0f;
@@ -274,11 +320,21 @@ namespace Instrument
                 params.forkVolume        = 55.0f;
                 params.forkToneColor     = 60.0f;
                 params.forkRingTime      = 40.0f;
+                params.forkResonance     = 35.0f;
 
                 params.damperTone        = 60.0f;
                 params.damperAttack      = 25.0f;
                 params.damperRelease     = 30.0f;
                 params.damperLevel       = 35.0f;
+
+                params.chorusDepth       = 30.0f;
+                params.chorusRate        = 40.0f;
+                params.chorusMix         = 20.0f;
+
+                params.phaserDepth       = 35.0f;
+                params.phaserRate        = 30.0f;
+                params.phaserFeedback    = 20.0f;
+                params.phaserMix         = 0.0f;
             }
             if (i == 2) // Ambient
             {
@@ -296,6 +352,8 @@ namespace Instrument
                 params.pickupDistance    = 0.3f;
                 params.pickupInputGain   = 0.8f;
                 params.pickupOutputGain  = 1.0f;
+                params.pickupNonlinearity= 25.0f;
+                params.pickupBarkAmount  = 10.0f;
 
                 params.hammerStiffness   = 40.0f;
                 params.hammerStrength    = 30.0f;
@@ -305,11 +363,21 @@ namespace Instrument
                 params.forkVolume        = 70.0f;
                 params.forkToneColor     = 50.0f;
                 params.forkRingTime      = 60.0f;
+                params.forkResonance     = 55.0f;
 
                 params.damperTone        = 40.0f;
                 params.damperAttack      = 10.0f;
                 params.damperRelease     = 20.0f;
                 params.damperLevel       = 20.0f;
+
+                params.chorusDepth       = 50.0f;
+                params.chorusRate        = 30.0f;
+                params.chorusMix         = 40.0f;
+
+                params.phaserDepth       = 60.0f;
+                params.phaserRate        = 25.0f;
+                params.phaserFeedback    = 40.0f;
+                params.phaserMix         = 30.0f;
             }
             if (i == 3) // Chorus EP
             {
@@ -327,6 +395,8 @@ namespace Instrument
                 params.pickupDistance    = 0.5f;
                 params.pickupInputGain   = 1.0f;
                 params.pickupOutputGain  = 1.0f;
+                params.pickupNonlinearity= 30.0f;
+                params.pickupBarkAmount  = 20.0f;
 
                 params.hammerStiffness   = 55.0f;
                 params.hammerStrength    = 50.0f;
@@ -336,11 +406,21 @@ namespace Instrument
                 params.forkVolume        = 65.0f;
                 params.forkToneColor     = 55.0f;
                 params.forkRingTime      = 45.0f;
+                params.forkResonance     = 50.0f;
 
                 params.damperTone        = 55.0f;
                 params.damperAttack      = 20.0f;
                 params.damperRelease     = 25.0f;
                 params.damperLevel       = 25.0f;
+
+                params.chorusDepth       = 60.0f;
+                params.chorusRate        = 55.0f;
+                params.chorusMix         = 50.0f;
+
+                params.phaserDepth       = 45.0f;
+                params.phaserRate        = 40.0f;
+                params.phaserFeedback    = 30.0f;
+                params.phaserMix         = 20.0f;
             }
 
             paramsOut <- params;
@@ -361,6 +441,8 @@ namespace Instrument
         event pickupDistance    (float f) { params.pickupDistance   = f; paramsOut <- params; }
         event pickupInputGain   (float f) { params.pickupInputGain  = f; paramsOut <- params; }
         event pickupOutputGain  (float f) { params.pickupOutputGain = f; paramsOut <- params; }
+        event pickupNonlinearity(float f) { params.pickupNonlinearity=f; paramsOut <- params; }
+        event pickupBarkAmount  (float f) { params.pickupBarkAmount = f; paramsOut <- params; }
 
         event hammerStiffness   (float f) { params.hammerStiffness  = f; paramsOut <- params; }
         event hammerStrength    (float f) { params.hammerStrength   = f; paramsOut <- params; }
@@ -370,11 +452,21 @@ namespace Instrument
         event forkVolume        (float f) { params.forkVolume       = f; paramsOut <- params; }
         event forkToneColor     (float f) { params.forkToneColor    = f; paramsOut <- params; }
         event forkRingTime      (float f) { params.forkRingTime     = f; paramsOut <- params; }
+        event forkResonance     (float f) { params.forkResonance    = f; paramsOut <- params; }
 
         event damperTone        (float f) { params.damperTone       = f; paramsOut <- params; }
         event damperAttack      (float f) { params.damperAttack     = f; paramsOut <- params; }
         event damperRelease     (float f) { params.damperRelease    = f; paramsOut <- params; }
         event damperLevel       (float f) { params.damperLevel      = f; paramsOut <- params; }
+
+        event chorusDepth       (float f) { params.chorusDepth      = f; paramsOut <- params; }
+        event chorusRate        (float f) { params.chorusRate       = f; paramsOut <- params; }
+        event chorusMix         (float f) { params.chorusMix        = f; paramsOut <- params; }
+
+        event phaserDepth       (float f) { params.phaserDepth      = f; paramsOut <- params; }
+        event phaserRate        (float f) { params.phaserRate       = f; paramsOut <- params; }
+        event phaserFeedback    (float f) { params.phaserFeedback   = f; paramsOut <- params; }
+        event phaserMix         (float f) { params.phaserMix        = f; paramsOut <- params; }
     }
 }
 
@@ -518,7 +610,7 @@ processor AmplitudeSource
 }
 
 //==============================================================================
-// PickupModel: nutzt ausschließlich Instrument::Params
+// PickupModel: Enhanced with nonlinear interactions and "bark" effect
 //==============================================================================
 
 processor PickupModel
@@ -536,6 +628,12 @@ processor PickupModel
     float32 dist   = 0.5f;
     float32 inGain = 1.0f;
     float32 outGain= 1.0f;
+    float32 nonlin = 0.3f;
+    float32 bark   = 0.2f;
+
+    // State für Resonanzketten und "Bark"-Effekt
+    float32 resonanceState = 0.0f;
+    float32 prevSample = 0.0f;
 
     // Event‑Handler: übernimmt Werte aus dem Struct
     event paramsIn (Instrument::Params p)
@@ -547,6 +645,8 @@ processor PickupModel
         dist    = p.pickupDistance;
         inGain  = p.pickupInputGain;
         outGain = p.pickupOutputGain;
+        nonlin  = p.pickupNonlinearity * 0.01f;
+        bark    = p.pickupBarkAmount * 0.01f;
     }
 
     void main()
@@ -555,22 +655,63 @@ processor PickupModel
         {
             float32 x = in * inGain;
 
+            // Asymmetrische Pickup-Position (typisch für Rhodes)
             if (type == 0)
             {
-                // Elektromagnetisch
-                x = x * (1.0f + sym * 0.1f);
+                // Elektromagnetisch mit Asymmetrie
+                x = x * (1.0f + sym * 0.15f);
+                
+                // Nichtlineare Interaktion zwischen Zunge und Pickup
+                float32 squared = x * x;
+                x = x + (squared * sign(x) * nonlin * 0.3f);
+                
+                // Pickup-Distanz beeinflusst Amplitude und Obertöne
                 x = x * (1.0f - dist * 0.2f);
+                
+                // "Bark"-Effekt: Resonanz und leichte Übersteuerung
+                // Dies simuliert die Pickup-Zunge-Interaktion
+                float32 derivative = x - prevSample;
+                resonanceState = resonanceState * 0.98f + derivative * bark * 0.5f;
+                
+                // Soft clipping für den typischen Rhodes "Growl"
+                float32 barkContribution = resonanceState * (1.0f + abs(x) * 0.5f);
+                x = x + barkContribution;
+                
+                // Sanfte Übersteuerung (typisch für Vintage Rhodes Amps)
+                if (bark > 0.01f)
+                {
+                    float32 driven = x * (1.0f + bark * 0.5f);
+                    x = tanh(driven * 1.2f) * 0.9f;
+                }
             }
             else
             {
-                // Elektrostatisch
-                x = tanh(x * (1.0f + sym * 0.2f));
+                // Elektrostatisch (Wurlitzer-Style)
+                x = x * (1.0f + sym * 0.25f);
+                
+                // Wurlitzer hat stärkere Nichtlinearität
+                x = tanh(x * (1.0f + nonlin * 0.8f));
+                
+                // Distanzabhängige Dämpfung
                 x = x * (1.0f - dist * 0.4f);
+                
+                // Wurlitzer "Reed Bark" - anders als Rhodes
+                float32 derivative = x - prevSample;
+                resonanceState = resonanceState * 0.96f + derivative * bark * 0.4f;
+                x = x + resonanceState * 0.7f;
             }
 
+            prevSample = x;
             out <- x * outGain;
             advance();
         }
+    }
+
+    float32 sign(float32 val)
+    {
+        if (val > 0.0f) return 1.0f;
+        if (val < 0.0f) return -1.0f;
+        return 0.0f;
     }
 }
 
@@ -645,8 +786,13 @@ processor ForkModel
     float32 vol   = 0.5f;
     float32 tone  = 0.5f;
     float32 ring  = 0.5f;
+    float32 reso  = 0.4f;
 
+    // States für komplexe Resonanz (simuliert Zungen-Resonanzen)
     float32 state = 0.0f;
+    float32 resonance1 = 0.0f;
+    float32 resonance2 = 0.0f;
+    float32 resonance3 = 0.0f;
 
     event paramsIn (Instrument::Params p)
     {
@@ -655,6 +801,7 @@ processor ForkModel
         vol    = p.forkVolume    * 0.01f;
         tone   = p.forkToneColor * 0.01f;
         ring   = p.forkRingTime  * 0.01f;
+        reso   = p.forkResonance * 0.01f;
     }
 
     void main()
@@ -663,24 +810,46 @@ processor ForkModel
         {
             float32 x = in;
 
-            // Decay
+            // Decay mit nichtlinearem Verhalten
             state = state * (1.0f - decay * 0.01f) + x;
-            x = state;
+            
+            // Mehrfache Resonanzketten (simuliert verschiedene Zungen-Modi)
+            // Diese erzeugen die komplexen Obertöne eines echten E-Pianos
+            resonance1 = resonance1 * (0.995f - reso * 0.05f) + state * reso * 0.3f;
+            resonance2 = resonance2 * (0.990f - reso * 0.08f) + state * reso * 0.2f;
+            resonance3 = resonance3 * (0.985f - reso * 0.10f) + state * reso * 0.1f;
+
+            // Kombiniere Hauptsignal mit Resonanzen
+            x = state + resonance1 + resonance2 * 0.7f + resonance3 * 0.5f;
+
+            // Nichtlineare Interaktion bei hohen Amplituden (typisch für E-Piano)
+            if (abs(x) > 0.5f)
+            {
+                float32 excess = abs(x) - 0.5f;
+                x = x - sign(x) * excess * reso * 0.3f;
+            }
 
             // Lautstärke
             x = x * (0.5f + vol);
 
-            // Klangfarbe
+            // Klangfarbe mit verbesserter Filterung
             float32 low  = x * (1.0f - tone);
-            float32 high = tanh(x) * tone;
+            float32 high = tanh(x * 1.5f) * tone;
             x = low + high;
 
-            // RingTime
+            // RingTime - beeinflusst Nachhall und Sustain
             x = x + state * ring * 0.05f;
 
             out <- x;
             advance();
         }
+    }
+
+    float32 sign(float32 val)
+    {
+        if (val > 0.0f) return 1.0f;
+        if (val < 0.0f) return -1.0f;
+        return 0.0f;
     }
 }
 
@@ -778,6 +947,176 @@ processor Tremolo
         {
             stepTo (0.5f + depth);
             stepTo (0.5f - depth);
+        }
+    }
+}
+
+//==============================================================================
+// ChorusEffect: Simuliert klassische analoge Chorus-Effekte
+//==============================================================================
+
+processor ChorusEffect
+{
+    input  stream float32 in;
+    output stream float32 out;
+
+    input event Instrument::Params paramsIn;
+
+    Instrument::Params params;
+    float32 depth = 0.4f;
+    float32 rate  = 0.5f;
+    float32 mix   = 0.3f;
+
+    // Delay-Buffer für Chorus (benötigt etwa 50ms bei 44.1kHz = ~2200 Samples)
+    float32[4096] delayBuffer;
+    int writePos = 0;
+    
+    float32 lfoPhase = 0.0f;
+    float32 lfoPhase2 = 0.33f; // Zweiter LFO mit Phasenversatz
+
+    event paramsIn (Instrument::Params p)
+    {
+        params = p;
+        depth = p.chorusDepth * 0.01f;
+        rate  = p.chorusRate  * 0.01f;
+        mix   = p.chorusMix   * 0.01f;
+    }
+
+    void main()
+    {
+        loop
+        {
+            float32 x = in;
+
+            // LFO für Delay-Modulation (typische Chorus-Rate: 0.1 - 5 Hz)
+            let lfoFreq = 0.1f + rate * 4.9f;
+            let lfoInc = lfoFreq / float32(processor.frequency);
+            
+            lfoPhase += lfoInc;
+            lfoPhase2 += lfoInc;
+            if (lfoPhase >= 1.0f) lfoPhase -= 1.0f;
+            if (lfoPhase2 >= 1.0f) lfoPhase2 -= 1.0f;
+
+            // Berechne LFO-Werte (Sinuswellen)
+            let lfo1 = sin(lfoPhase * twoPi);
+            let lfo2 = sin(lfoPhase2 * twoPi);
+
+            // Delay-Zeit modulieren (5-25ms typisch für Chorus)
+            let baseDelay = 15.0f * float32(processor.frequency) / 1000.0f; // 15ms
+            let modDepth = depth * 10.0f * float32(processor.frequency) / 1000.0f; // bis 10ms Modulation
+            
+            let delayTime1 = baseDelay + lfo1 * modDepth;
+            let delayTime2 = baseDelay + lfo2 * modDepth * 0.8f;
+
+            // Schreibe in Buffer
+            delayBuffer[writePos] = x;
+
+            // Lese aus Buffer mit Interpolation (2 Voices)
+            let readPos1 = float32(writePos) - delayTime1;
+            let readPos2 = float32(writePos) - delayTime2;
+            
+            if (readPos1 < 0.0f) readPos1 += 4096.0f;
+            if (readPos2 < 0.0f) readPos2 += 4096.0f;
+
+            let delayed1 = readDelayLinear(readPos1);
+            let delayed2 = readDelayLinear(readPos2);
+
+            // Mix: Dry + Wet (zwei leicht verstimmte Kopien)
+            let wet = (delayed1 + delayed2) * 0.5f;
+            let output = x * (1.0f - mix) + wet * mix;
+
+            writePos = (writePos + 1) & 4095; // Wrap at 4096
+
+            out <- output;
+            advance();
+        }
+    }
+
+    float32 readDelayLinear(float32 pos)
+    {
+        let idx = int(pos);
+        let frac = pos - float32(idx);
+        let idx1 = idx & 4095;
+        let idx2 = (idx + 1) & 4095;
+        
+        return delayBuffer[idx1] * (1.0f - frac) + delayBuffer[idx2] * frac;
+    }
+}
+
+//==============================================================================
+// PhaserEffect: Simuliert klassische analoge Phaser-Effekte
+//==============================================================================
+
+processor PhaserEffect
+{
+    input  stream float32 in;
+    output stream float32 out;
+
+    input event Instrument::Params paramsIn;
+
+    Instrument::Params params;
+    float32 depth    = 0.5f;
+    float32 rate     = 0.4f;
+    float32 feedback = 0.3f;
+    float32 mix      = 0.0f;
+
+    // Phaser-State (All-Pass-Filter)
+    float32[6] allpassState;
+    float32 feedbackState = 0.0f;
+    float32 lfoPhase = 0.0f;
+
+    event paramsIn (Instrument::Params p)
+    {
+        params   = p;
+        depth    = p.phaserDepth    * 0.01f;
+        rate     = p.phaserRate     * 0.01f;
+        feedback = p.phaserFeedback * 0.01f;
+        mix      = p.phaserMix      * 0.01f;
+    }
+
+    void main()
+    {
+        loop
+        {
+            float32 x = in + feedbackState * feedback * 0.5f;
+
+            // LFO für Filter-Modulation (typische Phaser-Rate: 0.05 - 2 Hz)
+            let lfoFreq = 0.05f + rate * 1.95f;
+            let lfoInc = lfoFreq / float32(processor.frequency);
+            
+            lfoPhase += lfoInc;
+            if (lfoPhase >= 1.0f) lfoPhase -= 1.0f;
+
+            // LFO-Wert (Sinuswelle)
+            let lfo = sin(lfoPhase * twoPi);
+
+            // All-Pass-Filter-Koeffizienten modulieren
+            // Typischer Phaser verwendet 4-12 All-Pass-Filter in Serie
+            let minFreq = 200.0f;
+            let maxFreq = 2000.0f;
+            let centerFreq = minFreq + (maxFreq - minFreq) * (0.5f + depth * 0.5f * lfo);
+            
+            // Vereinfachter All-Pass-Koeffizient
+            let coefficient = (centerFreq * twoPi / float32(processor.frequency) - 1.0f) 
+                            / (centerFreq * twoPi / float32(processor.frequency) + 1.0f);
+
+            // Kaskade von All-Pass-Filtern (6 Stages)
+            float32 filtered = x;
+            
+            for (int i = 0; i < 6; i++)
+            {
+                let allpassOut = coefficient * filtered + allpassState[i];
+                allpassState[i] = filtered - coefficient * allpassOut;
+                filtered = allpassOut;
+            }
+
+            feedbackState = filtered;
+
+            // Mix Dry/Wet
+            let output = in * (1.0f - mix) + filtered * mix;
+
+            out <- output;
+            advance();
         }
     }
 }

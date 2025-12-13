@@ -1,0 +1,784 @@
+//
+//     ,ad888ba,                              88
+//    d8"'    "8b
+//   d8            88,dba,,adba,   ,aPP8A.A8  88     (C)2024 Cmajor Software Ltd
+//   Y8,           88    88    88  88     88  88
+//    Y8a.   .a8P  88    88    88  88,   ,88  88     https://cmajor.dev
+//     '"Y888Y"'   88    88    88  '"8bbP"Y8  88
+//                                           ,88
+//                                        888P"
+//
+//  This code may be used under either a GPLv3 or commercial
+//  license: see LICENSE.md for more details.
+
+graph ElectricPiano  [[ main ]]
+{
+    input event std::midi::Message midiIn  [[ name: "MIDI input" ]];
+    input paramsProcessor.*;
+
+    output stream float<2> audioOut  [[ name: "Audio Out" ]];
+
+    node
+    {
+        voices          = Voice[64];
+        voiceAllocator  = std::voices::VoiceAllocator(64);
+        paramsProcessor = Instrument::ParamsProcessor;   
+
+        pickup = PickupModel;
+        hammer = HammerModel;
+        fork   = ForkModel;
+        damper = DamperModel;
+        tremolo= Tremolo;
+    }
+
+
+    connection
+    {
+        midiIn -> std::midi::MPEConverter -> voiceAllocator -> voices.eventsIn, damper.eventsIn;
+
+        paramsProcessor.paramsOut -> voices.paramsIn, pickup.paramsIn, 
+                                     hammer.paramsIn, fork.paramsIn, damper.paramsIn, 
+                                     tremolo.paramsIn;
+
+        voices.audioOut -> pickup.in;
+        pickup.out      -> hammer.in;
+        hammer.out      -> fork.in;
+        fork.out        -> damper.in;
+        damper.out      -> tremolo.in;
+        tremolo.out     -> audioOut;
+
+        // Damper bekommt Note-Events
+        midiIn -> std::midi::MPEConverter -> damper.eventsIn;
+    }
+}
+
+//==============================================================================
+namespace Instrument
+{
+    let harmonics = 32;
+
+    struct Params
+    {
+        float brightness;
+        float velocityScaling;
+        float decayRate;
+        float harmonicDecayRate;
+        float keyScaling;
+        float releaseRate;
+
+        // Vibrato
+        float vibratoDepth;
+        float vibratoRate;
+
+        // Pickup
+        int pickupType;
+        float pickupSymmetry;
+        float pickupDistance;
+        float pickupInputGain;
+        float pickupOutputGain;
+
+        // Hammer
+        float hammerStiffness;
+        float hammerStrength;
+        float hammerNoise;
+
+        // Fork
+        float forkDecay;
+        float forkVolume;
+        float forkToneColor;
+        float forkRingTime;
+
+        // Damper
+        float damperTone;
+        float damperAttack;
+        float damperRelease;
+        float damperLevel;
+
+        // Preset
+        int presetIndex;
+
+        float<harmonics> getDecay (float note)
+        {
+            float baseDecayRate = (this.decayRate / 40000.0f);
+            float harmonicScaling = 1.0f - (this.harmonicDecayRate / 200000.0f);
+
+            float scalingMultiplier = (48.0f - note) / 12.0f;
+            float keyScalingFactor = scalingMultiplier * (this.keyScaling * 0.02f);
+
+            if (keyScalingFactor > 0)
+                baseDecayRate = 1.0f - (baseDecayRate / (1.0f + keyScalingFactor));
+            else
+                baseDecayRate = 1.0f - (baseDecayRate * (1.0f - keyScalingFactor));
+
+            float<harmonics> decay;
+            float scaling = 1.0f;
+
+            for (wrap<harmonics> i)
+            {
+                decay[i] = baseDecayRate * scaling;
+                scaling *= harmonicScaling;
+            }
+
+            return decay;
+        }
+
+        float<harmonics> getRelease (float note)
+        {
+            return 0.999f - (this.releaseRate / 1000.0f);
+        }
+
+        float<Instrument::harmonics> getInitialAmplitudes (float note, float  velocity)
+        {
+            let velocity100 = float<Instrument::harmonics> (0.150869f, 0.385766f, 0.215543f, 0.117811f, 0.100411f, 0.0128637f,
+                                                            0.0288844f, 0.00243388f, 0.00963092f, 0.0035634f, 0.00256945f, 0.00184799f,
+                                                            0.000399878f, 0.000660576f, 3.00995e-05f, 0.00021866f, 9.33705e-05f,
+                                                            0.000177973f, 0.0002545f, 0.000323602f, 0.000779045f, 0.000116569f,
+                                                            0.000772873f, 0.000364486f, 0.000248027f, 0.00018236f, 3.27292e-05f,
+                                                            6.64988e-05f, 0.0f, 0.0f, 0.0f, 0.0f);
+
+            let velocity0   = float<Instrument::harmonics> (0.02f, 0.05f, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                                                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+
+            var v = (velocity100 * velocity) + (velocity0 * (1.0f - velocity));
+
+            float brightnessScaling = -0.2f + (0.8f * (this.brightness * 0.01f));
+
+            brightnessScaling += (velocity * this.velocityScaling * 0.01f * 0.5f);
+
+            for (wrap<harmonics> i)
+                v[i] *= (1.0f + brightnessScaling * float (i));
+
+            return v;
+        }
+    }
+
+    Params createParams()
+    {
+        Params p;
+
+        p.decayRate = 10;
+        p.releaseRate = 20;
+        p.keyScaling = 50;
+        p.harmonicDecayRate = 20;
+
+        return p;
+    }
+
+
+    processor ParamsProcessor
+    {
+        // --- Preset-Struct Input (muss bei den Endpoints ganz oben stehen) ---
+        input event Instrument::Params paramsIn;
+
+        // --- Preset ---
+        input event int presetIndex [[ name: "Preset", min: 0, max: 3, init: 0 ]];
+
+        // --- Basis-Parameter ---
+        input event float brightness        [[ name: "Brightness",          min: 0.0, max: 100.0, init: 30, unit: "%" ]];
+        input event float velocityScaling   [[ name: "Velocity Scaling",    min: 0.0, max: 100.0, init: 50, unit: "%" ]];
+        input event float decayRate         [[ name: "Decay Rate",          min: 0.0, max: 100.0, init: 10, unit: "%" ]];
+        input event float harmonicDecayRate [[ name: "Harmonic Decay Rate", min: 0.0, max: 100.0, init: 30, unit: "%" ]];
+        input event float keyScaling        [[ name: "Key Scaling",         min: 0.0, max: 100.0, init: 50, unit: "%" ]];
+        input event float releaseRate       [[ name: "Release Rate",        min: 0.0, max: 100.0, init: 60, unit: "%" ]];
+        input event float vibratoDepth      [[ name: "Vibrato Intensity",   min: 0.0, max: 100.0, init: 25, unit: "%" ]];
+        input event float vibratoRate       [[ name: "Vibrato Speed",       min: 0.0, max: 100.0, init: 50, unit: "%" ]];
+
+        // --- Pickup ---
+        input event int   pickupType        [[ name: "Pickup Type",         min: 0, max: 1, init: 0 ]];
+        input event float pickupSymmetry    [[ name: "Pickup Symmetry",     min: -1.0, max: 1.0, init: 0.0 ]];
+        input event float pickupDistance    [[ name: "Pickup Distance",     min: 0.0, max: 1.0, init: 0.5 ]];
+        input event float pickupInputGain   [[ name: "Pickup Input Gain",   min: 0.0, max: 2.0, init: 1.0 ]];
+        input event float pickupOutputGain  [[ name: "Pickup Output Gain",  min: 0.0, max: 2.0, init: 1.0 ]];
+
+        // --- Hammer ---
+        input event float hammerStiffness   [[ name: "Hammer Stiffness",    min: 0.0, max: 100.0, init: 50, unit: "%" ]];
+        input event float hammerStrength    [[ name: "Hammer Strength",     min: 0.0, max: 100.0, init: 50, unit: "%" ]];
+        input event float hammerNoise       [[ name: "Hammer Noise",        min: 0.0, max: 100.0, init: 10, unit: "%" ]];
+
+        // --- Fork ---
+        input event float forkDecay         [[ name: "Fork Decay",          min: 0.0, max: 100.0, init: 50, unit: "%" ]];
+        input event float forkVolume        [[ name: "Fork Volume",         min: 0.0, max: 100.0, init: 50, unit: "%" ]];
+        input event float forkToneColor     [[ name: "Fork Tone",           min: 0.0, max: 100.0, init: 50, unit: "%" ]];
+        input event float forkRingTime      [[ name: "Fork RingTime",       min: 0.0, max: 100.0, init: 50, unit: "%" ]];
+
+        // --- Damper ---
+        input event float damperTone        [[ name: "Damper Tone",         min: 0.0, max: 100.0, init: 50, unit: "%" ]];
+        input event float damperAttack      [[ name: "Damper Attack",       min: 0.0, max: 100.0, init: 20, unit: "%" ]];
+        input event float damperRelease     [[ name: "Damper Release",      min: 0.0, max: 100.0, init: 20, unit: "%" ]];
+        input event float damperLevel       [[ name: "Damper Level",        min: 0.0, max: 100.0, init: 30, unit: "%" ]];
+
+        // --- Output ---
+        output event Instrument::Params paramsOut;
+
+        // --- Interner Zustand ---
+        Instrument::Params params = createParams();
+
+        // --- Preset-Handler ---
+        event presetIndex (int i)
+        {
+            params.presetIndex = i;
+
+            if (i == 0) // Rhodes
+            {
+                params.brightness        = 60.0f;
+                params.velocityScaling   = 70.0f;
+                params.decayRate         = 15.0f;
+                params.harmonicDecayRate = 25.0f;
+                params.keyScaling        = 40.0f;
+                params.releaseRate       = 50.0f;
+                params.vibratoDepth      = 15.0f;
+                params.vibratoRate       = 40.0f;
+
+                params.pickupType        = 0;
+                params.pickupSymmetry    = 0.0f;
+                params.pickupDistance    = 0.4f;
+                params.pickupInputGain   = 1.0f;
+                params.pickupOutputGain  = 1.2f;
+
+                params.hammerStiffness   = 60.0f;
+                params.hammerStrength    = 55.0f;
+                params.hammerNoise       = 10.0f;
+
+                params.forkDecay         = 50.0f;
+                params.forkVolume        = 60.0f;
+                params.forkToneColor     = 40.0f;
+                params.forkRingTime      = 30.0f;
+
+                params.damperTone        = 50.0f;
+                params.damperAttack      = 20.0f;
+                params.damperRelease     = 25.0f;
+                params.damperLevel       = 30.0f;
+            }
+            if (i == 1) // Wurlitzer
+            {
+                params.brightness        = 45.0f;
+                params.velocityScaling   = 60.0f;
+                params.decayRate         = 20.0f;
+                params.harmonicDecayRate = 30.0f;
+                params.keyScaling        = 50.0f;
+                params.releaseRate       = 65.0f;
+                params.vibratoDepth      = 20.0f;
+                params.vibratoRate       = 35.0f;
+
+                params.pickupType        = 0;
+                params.pickupSymmetry    = 0.2f;
+                params.pickupDistance    = 0.6f;
+                params.pickupInputGain   = 1.2f;
+                params.pickupOutputGain  = 1.0f;
+
+                params.hammerStiffness   = 70.0f;
+                params.hammerStrength    = 60.0f;
+                params.hammerNoise       = 15.0f;
+
+                params.forkDecay         = 55.0f;
+                params.forkVolume        = 55.0f;
+                params.forkToneColor     = 60.0f;
+                params.forkRingTime      = 40.0f;
+
+                params.damperTone        = 60.0f;
+                params.damperAttack      = 25.0f;
+                params.damperRelease     = 30.0f;
+                params.damperLevel       = 35.0f;
+            }
+            if (i == 2) // Ambient
+            {
+                params.brightness        = 50.0f;
+                params.velocityScaling   = 50.0f;
+                params.decayRate         = 40.0f;
+                params.harmonicDecayRate = 50.0f;
+                params.keyScaling        = 20.0f;
+                params.releaseRate       = 90.0f;
+                params.vibratoDepth      = 30.0f;
+                params.vibratoRate       = 20.0f;
+
+                params.pickupType        = 0;
+                params.pickupSymmetry    = -0.1f;
+                params.pickupDistance    = 0.3f;
+                params.pickupInputGain   = 0.8f;
+                params.pickupOutputGain  = 1.0f;
+
+                params.hammerStiffness   = 40.0f;
+                params.hammerStrength    = 30.0f;
+                params.hammerNoise       = 5.0f;
+
+                params.forkDecay         = 70.0f;
+                params.forkVolume        = 70.0f;
+                params.forkToneColor     = 50.0f;
+                params.forkRingTime      = 60.0f;
+
+                params.damperTone        = 40.0f;
+                params.damperAttack      = 10.0f;
+                params.damperRelease     = 20.0f;
+                params.damperLevel       = 20.0f;
+            }
+            if (i == 3) // Chorus EP
+            {
+                params.brightness        = 65.0f;
+                params.velocityScaling   = 55.0f;
+                params.decayRate         = 25.0f;
+                params.harmonicDecayRate = 30.0f;
+                params.keyScaling        = 50.0f;
+                params.releaseRate       = 60.0f;
+                params.vibratoDepth      = 40.0f;
+                params.vibratoRate       = 60.0f;
+
+                params.pickupType        = 0;
+                params.pickupSymmetry    = 0.0f;
+                params.pickupDistance    = 0.5f;
+                params.pickupInputGain   = 1.0f;
+                params.pickupOutputGain  = 1.0f;
+
+                params.hammerStiffness   = 55.0f;
+                params.hammerStrength    = 50.0f;
+                params.hammerNoise       = 12.0f;
+
+                params.forkDecay         = 60.0f;
+                params.forkVolume        = 65.0f;
+                params.forkToneColor     = 55.0f;
+                params.forkRingTime      = 45.0f;
+
+                params.damperTone        = 55.0f;
+                params.damperAttack      = 20.0f;
+                params.damperRelease     = 25.0f;
+                params.damperLevel       = 25.0f;
+            }
+
+            paramsOut <- params;
+        }
+
+        // --- Event-Handler für Einzelparameter ---
+        event brightness        (float f) { params.brightness        = f; paramsOut <- params; }
+        event velocityScaling   (float f) { params.velocityScaling   = f; paramsOut <- params; }
+        event decayRate         (float f) { params.decayRate         = f; paramsOut <- params; }
+        event harmonicDecayRate (float f) { params.harmonicDecayRate = f; paramsOut <- params; }
+        event keyScaling        (float f) { params.keyScaling        = f; paramsOut <- params; }
+        event releaseRate       (float f) { params.releaseRate       = f; paramsOut <- params; }
+        event vibratoDepth      (float f) { params.vibratoDepth      = f; paramsOut <- params; }
+        event vibratoRate       (float f) { params.vibratoRate       = f; paramsOut <- params; }
+
+        event pickupType        (int i)   { params.pickupType       = i; paramsOut <- params; }
+        event pickupSymmetry    (float f) { params.pickupSymmetry   = f; paramsOut <- params; }
+        event pickupDistance    (float f) { params.pickupDistance   = f; paramsOut <- params; }
+        event pickupInputGain   (float f) { params.pickupInputGain  = f; paramsOut <- params; }
+        event pickupOutputGain  (float f) { params.pickupOutputGain = f; paramsOut <- params; }
+
+        event hammerStiffness   (float f) { params.hammerStiffness  = f; paramsOut <- params; }
+        event hammerStrength    (float f) { params.hammerStrength   = f; paramsOut <- params; }
+        event hammerNoise       (float f) { params.hammerNoise      = f; paramsOut <- params; }
+
+        event forkDecay         (float f) { params.forkDecay        = f; paramsOut <- params; }
+        event forkVolume        (float f) { params.forkVolume       = f; paramsOut <- params; }
+        event forkToneColor     (float f) { params.forkToneColor    = f; paramsOut <- params; }
+        event forkRingTime      (float f) { params.forkRingTime     = f; paramsOut <- params; }
+
+        event damperTone        (float f) { params.damperTone       = f; paramsOut <- params; }
+        event damperAttack      (float f) { params.damperAttack     = f; paramsOut <- params; }
+        event damperRelease     (float f) { params.damperRelease    = f; paramsOut <- params; }
+        event damperLevel       (float f) { params.damperLevel      = f; paramsOut <- params; }
+    }
+}
+
+//==============================================================================
+graph Voice
+{
+    input event Instrument::Params paramsIn;
+    input event (std::notes::NoteOn, std::notes::NoteOff) eventsIn;
+
+    output stream float audioOut;
+
+    node
+    {
+        osc = OscillatorBank (Instrument::harmonics);
+        amplitudeSource = AmplitudeSource;
+    }
+
+    connection
+    {
+        paramsIn  -> osc.paramsIn, amplitudeSource.paramsIn;
+        eventsIn  -> osc.eventsIn, amplitudeSource.eventsIn;
+
+        amplitudeSource.out -> osc.amplitudes;
+        osc.audioOut        -> audioOut;
+    }
+}
+
+//==============================================================================
+processor OscillatorBank (int size = 64)
+{
+    input event (std::notes::NoteOn) eventsIn;
+    input event Instrument::Params paramsIn;
+    input stream float<size> amplitudes;
+
+    output stream float audioOut;
+
+    event paramsIn (Instrument::Params p)
+    {
+        params = p;
+    }
+
+    event eventsIn (std::notes::NoteOn e)
+    {
+        notePitch = e.pitch;
+        oscillators = 1.0f;
+        setMultipliers();
+    }
+
+    Instrument::Params params;
+
+    float<Instrument::harmonics> decay, release;
+    float notePitch;
+
+    void setMultipliers()
+    {
+        let noteFrequency = std::notes::noteToFrequency (notePitch);
+        let nyquist = float (processor.frequency / 2.0);
+
+        for (wrap<size> i)
+        {
+            let harmonicFrequency = noteFrequency * (int (i) + 1);
+
+            if (harmonicFrequency < nyquist)
+            {
+                let angle = float32 (twoPi * harmonicFrequency * processor.period);
+                multiplier[i].real = cos (angle);
+                multiplier[i].imag = sin (angle);
+            }
+            else
+            {
+                multiplier[i] = 1.0f;
+            }
+        }
+    }
+
+    complex32<size> oscillators = 1.0f,
+                    multiplier = 1.0f;
+
+    void main()
+    {
+        loop
+        {
+            oscillators = oscillators * multiplier;
+
+            if const (size == 1)
+                audioOut <- oscillators.imag * amplitudes;
+            else
+                audioOut <- sum (oscillators.imag * amplitudes);
+
+            advance();
+        }
+    }
+}
+
+//==============================================================================
+processor AmplitudeSource
+{
+    input event (std::notes::NoteOn, std::notes::NoteOff) eventsIn;
+    input event Instrument::Params paramsIn;
+
+    output stream float<Instrument::harmonics> out;
+
+    Instrument::Params params;
+    let interpolatedSteps = 64;
+    float<Instrument::harmonics> currentValue, release, decay;
+    bool released = false;
+
+    event paramsIn (Instrument::Params p)
+    {
+        params = p;
+    }
+
+    event eventsIn (std::notes::NoteOn e)
+    {
+        release      = params.getRelease (e.pitch);
+        decay        = params.getDecay (e.pitch);
+        currentValue = params.getInitialAmplitudes (e.pitch, e.velocity);
+        released     = false;
+    }
+
+    event eventsIn (std::notes::NoteOff e)
+    {
+        released = true;
+    }
+
+    void main()
+    {
+        loop
+        {
+            let target = currentValue * (released ? release : decay);
+            let increment = (target - currentValue) / interpolatedSteps;
+
+            loop (interpolatedSteps)
+            {
+                out <- currentValue;
+                currentValue += increment;
+                advance();
+            }
+        }
+    }
+}
+
+//==============================================================================
+// PickupModel: nutzt ausschließlich Instrument::Params
+//==============================================================================
+
+processor PickupModel
+{
+    input  stream float32 in;
+    output stream float32 out;
+
+    // Event‑Input für Instrument‑Parameter
+    input event Instrument::Params paramsIn;
+
+    // interne Variablen
+    Instrument::Params params;
+    int     type   = 0;
+    float32 sym    = 0.0f;
+    float32 dist   = 0.5f;
+    float32 inGain = 1.0f;
+    float32 outGain= 1.0f;
+
+    // Event‑Handler: übernimmt Werte aus dem Struct
+    event paramsIn (Instrument::Params p)
+    {
+        params  = p;
+
+        type    = p.pickupType;
+        sym     = p.pickupSymmetry;
+        dist    = p.pickupDistance;
+        inGain  = p.pickupInputGain;
+        outGain = p.pickupOutputGain;
+    }
+
+    void main()
+    {
+        loop
+        {
+            float32 x = in * inGain;
+
+            if (type == 0)
+            {
+                // Elektromagnetisch
+                x = x * (1.0f + sym * 0.1f);
+                x = x * (1.0f - dist * 0.2f);
+            }
+            else
+            {
+                // Elektrostatisch
+                x = tanh(x * (1.0f + sym * 0.2f));
+                x = x * (1.0f - dist * 0.4f);
+            }
+
+            out <- x * outGain;
+            advance();
+        }
+    }
+}
+
+processor HammerModel
+{
+    input  stream float32 in;
+    output stream float32 out;
+
+    input event Instrument::Params paramsIn;
+    input event (std::notes::NoteOn) noteEvents; // nur NoteOn nötig
+
+    Instrument::Params params;
+    float32 stiff = 0.5f;
+    float32 str   = 0.5f;
+    float32 noi   = 0.1f;
+
+    std::random::RNG rng;
+    float32 noiseEnv = 0.0f;
+
+    event paramsIn (Instrument::Params p)
+    {
+        params = p;
+        stiff  = p.hammerStiffness * 0.01f;
+        str    = p.hammerStrength  * 0.01f;
+        noi    = p.hammerNoise     * 0.01f;
+    }
+
+    event noteEvents (std::notes::NoteOn e)
+    {
+        // Trigger Noise-Burst bei Anschlag
+        noiseEnv = 1.0f;
+    }
+
+    void main()
+    {
+        rng.seed(12345);
+
+        loop
+        {
+            float32 x = in;
+
+            // Härte
+            x = x * (1.0f + stiff * 0.5f);
+            x = tanh(x);
+
+            // Stärke
+            x = x * (0.5f + str);
+
+            // Noise nur wenn NoiseEnv > 0
+            if (noiseEnv > 0.001f)
+            {
+                float32 burst = rng.getBipolar() * noi * noiseEnv * 0.1f;
+                x += burst;
+                noiseEnv *= 0.95f; // Decay
+            }
+
+            out <- x;
+            advance();
+        }
+    }
+}
+
+processor ForkModel
+{
+    input  stream float32 in;
+    output stream float32 out;
+
+    input event Instrument::Params paramsIn;
+
+    Instrument::Params params;
+    float32 decay = 0.5f;
+    float32 vol   = 0.5f;
+    float32 tone  = 0.5f;
+    float32 ring  = 0.5f;
+
+    float32 state = 0.0f;
+
+    event paramsIn (Instrument::Params p)
+    {
+        params = p;
+        decay  = p.forkDecay     * 0.01f;
+        vol    = p.forkVolume    * 0.01f;
+        tone   = p.forkToneColor * 0.01f;
+        ring   = p.forkRingTime  * 0.01f;
+    }
+
+    void main()
+    {
+        loop
+        {
+            float32 x = in;
+
+            // Decay
+            state = state * (1.0f - decay * 0.01f) + x;
+            x = state;
+
+            // Lautstärke
+            x = x * (0.5f + vol);
+
+            // Klangfarbe
+            float32 low  = x * (1.0f - tone);
+            float32 high = tanh(x) * tone;
+            x = low + high;
+
+            // RingTime
+            x = x + state * ring * 0.05f;
+
+            out <- x;
+            advance();
+        }
+    }
+}
+
+
+processor DamperModel
+{
+    input  stream float32 in;
+    output stream float32 out;
+
+    input event Instrument::Params paramsIn;
+    input event (std::notes::NoteOn, std::notes::NoteOff) eventsIn;
+
+    Instrument::Params params;
+    float32 tone = 0.5f, lvl = 0.3f;
+
+    std::random::RNG rng;
+    float32 noiseEnv = 0.0f;
+
+    event paramsIn (Instrument::Params p)
+    {
+        params = p;
+        tone = p.damperTone * 0.01f;
+        lvl  = p.damperLevel* 0.01f;
+    }
+
+    event eventsIn (std::notes::NoteOn e)  { noiseEnv = 0.0f; } // kein Noise beim Anschlag
+    event eventsIn (std::notes::NoteOff e) { noiseEnv = 1.0f; } // Noise-Burst beim Loslassen
+
+    void main()
+    {
+        rng.seed(98765);
+
+        loop
+        {
+            float32 x = in;
+
+            // Klangfarbe
+            float32 low  = x * (1.0f - tone);
+            float32 high = tanh(x) * tone;
+            x = low + high;
+
+            // Noise nur bei Release
+            if (noiseEnv > 0.001f)
+            {
+                float32 burst = rng.getBipolar() * lvl * noiseEnv * 0.1f;
+                x += burst;
+                noiseEnv *= 0.93f; // Decay
+            }
+
+            out <- x;
+            advance();
+        }
+    }
+}
+
+processor Tremolo
+{
+    input stream float32 in;
+    output stream float32<2> out;
+
+    input event Instrument::Params paramsIn;
+
+    Instrument::Params params;
+
+    float32 frames  = 10000.0f;
+    float32 depth   = 0.0f;
+    float32 current = 0.5f;
+
+    event paramsIn (Instrument::Params p)
+    {
+        params = p;
+
+        // Vibrato-Rate: Anzahl Frames pro Halbwelle
+        frames = float32 (processor.frequency) / (1.0f + (p.vibratoRate * 0.1f));
+
+        // Vibrato-Tiefe: Amplitudenabweichung
+        depth = p.vibratoDepth * 0.005f;   // etwas feinfühliger Skalierungsfaktor
+    }
+
+    void stepTo (float32 target)
+    {
+        let step = (target - current) / frames;
+
+        loop (int (frames))
+        {
+            out <- float<2> (in * current, in * (1.0f - current));
+            current += step;
+            advance();
+        }
+    }
+
+    void main()
+    {
+        loop
+        {
+            stepTo (0.5f + depth);
+            stepTo (0.5f - depth);
+        }
+    }
+}
+

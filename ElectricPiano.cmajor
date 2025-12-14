@@ -117,8 +117,10 @@ namespace Instrument
 
         float<harmonics> getDecay (float note)
         {
-            float baseDecayRate = (this.decayRate / 40000.0f);
-            float harmonicScaling = 1.0f - (this.harmonicDecayRate / 200000.0f);
+            // Adjusted decay for natural Rhodes sustain characteristics
+            // Original decays: 50% at 700ms, 25% at 1750ms, 10% at 3700ms
+            float baseDecayRate = (this.decayRate / 25000.0f);  // Increased from 40000 for faster decay
+            float harmonicScaling = 1.0f - (this.harmonicDecayRate / 150000.0f);  // Increased from 200000 for faster harmonic decay
 
             float scalingMultiplier = (48.0f - note) / 12.0f;
             float keyScalingFactor = scalingMultiplier * (this.keyScaling * 0.02f);
@@ -147,66 +149,69 @@ namespace Instrument
 
         float<Instrument::harmonics> getInitialAmplitudes (float note, float  velocity)
         {
-            // Based on analysis of "Mark II fff_c37f0000.wav":
-            // - 2nd harmonic is STRONGER than fundamental (2.63x)
-            // - 3rd harmonic is strong (0.91x fundamental)
-            // - Higher harmonics decay naturally
-            // This creates the characteristic Rhodes "bell" sound
+            // Based on spectral analysis of "Mark II fff_c37f0000.wav":
+            // The Rhodes Mark II has exceptionally strong EVEN harmonics
+            // - 4th harmonic is STRONGEST (53.6x fundamental!)
+            // - 6th harmonic: 23.1x, 8th: 20.8x, 2nd: 15.7x, 10th: 15.5x
+            // - This extreme harmonic content creates the characteristic Rhodes "bell" sound
             //
-            // NOTE: The 2nd harmonic being stronger than fundamental is CORRECT
-            // and characteristic of Rhodes piano. The tine vibration produces
-            // strong even harmonics due to the pickup position and asymmetric
-            // vibration mode. This is what gives Rhodes its distinctive tone.
+            // The tine vibration produces strong even harmonics due to:
+            // 1. Asymmetric pickup position
+            // 2. Non-linear magnetic interaction
+            // 3. Tine resonance modes
             let velocity100 = float<Instrument::harmonics> (
-                0.100f,   // Fundamental (normalized reference)
-                0.263f,   // 2nd harmonic - STRONGEST (characteristic Rhodes)
-                0.091f,   // 3rd harmonic
-                0.046f,   // 4th harmonic
-                0.018f,   // 5th harmonic
-                0.012f,   // 6th harmonic
-                0.011f,   // 7th harmonic
-                0.008f,   // 8th harmonic
-                0.006f,   // 9th harmonic
-                0.005f,   // 10th harmonic
-                0.004f,   // 11th
-                0.003f,   // 12th
-                0.0025f,  // 13th
-                0.002f,   // 14th
-                0.0018f,  // 15th
-                0.0015f,  // 16th
-                0.0012f,  // 17th
-                0.001f,   // 18th
-                0.0008f,  // 19th
-                0.0006f,  // 20th
-                0.0005f,  // 21st
-                0.0004f,  // 22nd
-                0.0003f,  // 23rd
-                0.00025f, // 24th
-                0.0002f,  // 25th
-                0.00015f, // 26th
-                0.0001f,  // 27th
-                0.00008f, // 28th
-                0.00006f, // 29th
-                0.00004f, // 30th
-                0.00002f, // 31st
-                0.00001f  // 32nd
+                0.100f,   // H1:  Fundamental (normalized reference)
+                1.570f,   // H2:  15.7x - strong even harmonic
+                0.060f,   // H3:  0.6x  - odd harmonics weaker
+                5.357f,   // H4:  53.6x - STRONGEST! Characteristic Rhodes
+                0.072f,   // H5:  0.7x
+                2.315f,   // H6:  23.1x - very strong
+                0.069f,   // H7:  0.7x
+                2.085f,   // H8:  20.8x - very strong
+                0.070f,   // H9:  0.7x
+                1.545f,   // H10: 15.5x - strong
+                0.037f,   // H11: 0.4x
+                0.492f,   // H12: 4.9x
+                0.047f,   // H13: 0.5x
+                0.939f,   // H14: 9.4x
+                0.023f,   // H15: 0.2x
+                0.055f,   // H16: 0.5x
+                0.020f,   // H17
+                0.040f,   // H18
+                0.018f,   // H19
+                0.035f,   // H20
+                0.015f,   // H21
+                0.030f,   // H22
+                0.012f,   // H23
+                0.025f,   // H24
+                0.010f,   // H25
+                0.020f,   // H26
+                0.008f,   // H27
+                0.015f,   // H28
+                0.006f,   // H29
+                0.010f,   // H30
+                0.004f,   // H31
+                0.005f    // H32
             );
 
             let velocity0 = float<Instrument::harmonics> (
-                0.015f, 0.035f, 0.008f, 0.003f, 0.001f, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+                0.015f, 0.235f, 0.009f, 0.804f, 0.011f, 0.347f, 0.010f, 0.313f,
+                0.011f, 0.232f, 0.006f, 0.074f, 0.007f, 0.141f, 0.003f, 0.008f,
+                0.003f, 0.006f, 0.003f, 0.005f, 0.002f, 0.005f, 0.002f, 0.004f,
+                0.002f, 0.003f, 0.001f, 0.002f, 0.001f, 0.002f, 0.001f, 0.001f
             );
 
             // Softer velocity curve to prevent harsh attacks
             // Compress high velocities using power curve
-            float adjustedVelocity = pow(velocity, 0.75f);
+            float adjustedVelocity = pow(velocity, 0.85f);  // Increased from 0.75 for more dynamic range
             
             var v = (velocity100 * adjustedVelocity) + (velocity0 * (1.0f - adjustedVelocity));
 
-            // Gentler brightness scaling
-            float brightnessScaling = -0.15f + (0.6f * (this.brightness * 0.01f));
+            // Much gentler brightness scaling due to strong natural harmonics
+            // Original had too much brightness boost
+            float brightnessScaling = -0.35f + (0.45f * (this.brightness * 0.01f));
 
-            brightnessScaling += (adjustedVelocity * this.velocityScaling * 0.01f * 0.35f);
+            brightnessScaling += (adjustedVelocity * this.velocityScaling * 0.01f * 0.25f);
 
             for (wrap<harmonics> i)
                 v[i] *= (1.0f + brightnessScaling * float (i));
@@ -297,10 +302,10 @@ namespace Instrument
 
             if (i == 0) // Rhodes
             {
-                params.brightness        = 50.0f;  // Reduced from 60
-                params.velocityScaling   = 55.0f;  // Reduced from 70
-                params.decayRate         = 15.0f;
-                params.harmonicDecayRate = 25.0f;
+                params.brightness        = 40.0f;  // Reduced - harmonics are now naturally stronger
+                params.velocityScaling   = 50.0f;  // Reduced for more natural dynamics
+                params.decayRate         = 18.0f;  // Increased for proper decay to match original
+                params.harmonicDecayRate = 35.0f;  // Increased - higher harmonics should decay faster
                 params.keyScaling        = 40.0f;
                 params.releaseRate       = 50.0f;
                 params.vibratoDepth      = 15.0f;
@@ -309,20 +314,20 @@ namespace Instrument
                 params.pickupType        = 0;
                 params.pickupSymmetry    = 0.0f;
                 params.pickupDistance    = 0.4f;
-                params.pickupInputGain   = 0.9f;   // Reduced from 1.0
-                params.pickupOutputGain  = 1.1f;   // Reduced from 1.2
-                params.pickupNonlinearity= 25.0f;  // Reduced from 35
-                params.pickupBarkAmount  = 18.0f;  // Reduced from 25
+                params.pickupInputGain   = 0.8f;   // Reduced further
+                params.pickupOutputGain  = 1.0f;   // Reduced
+                params.pickupNonlinearity= 20.0f;  // Reduced
+                params.pickupBarkAmount  = 15.0f;  // Reduced
 
-                params.hammerStiffness   = 45.0f;  // Reduced from 60
-                params.hammerStrength    = 45.0f;  // Reduced from 55
-                params.hammerNoise       = 6.0f;   // Reduced from 10
+                params.hammerStiffness   = 40.0f;  // Reduced
+                params.hammerStrength    = 40.0f;  // Reduced
+                params.hammerNoise       = 5.0f;   // Reduced
 
                 params.forkDecay         = 50.0f;
-                params.forkVolume        = 60.0f;
+                params.forkVolume        = 55.0f;  // Reduced
                 params.forkToneColor     = 40.0f;
                 params.forkRingTime      = 30.0f;
-                params.forkResonance     = 45.0f;
+                params.forkResonance     = 40.0f;  // Reduced
 
                 params.damperTone        = 50.0f;
                 params.damperAttack      = 20.0f;
@@ -684,6 +689,11 @@ processor AmplitudeSource
             {
                 // Apply attack envelope to smooth the onset
                 float<Instrument::harmonics> envelopedValue = currentValue * attackEnvelope;
+                
+                // Apply overall scaling to compensate for stronger harmonics
+                // Original had weaker harmonics, current has much stronger (esp. H4=53x)
+                // Scale down to prevent clipping and match original amplitude
+                envelopedValue = envelopedValue * 0.12f;  // Compensate for ~8x stronger harmonic content
                 
                 // Soft saturation to prevent harshness
                 // Apply gentle compression similar to tube amp

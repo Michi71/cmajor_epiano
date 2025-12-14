@@ -151,7 +151,7 @@ namespace Instrument
         {
             // Based on spectral analysis of "Mark II fff_c37f0000.wav":
             // The Rhodes Mark II has exceptionally strong EVEN harmonics
-            // - 4th harmonic is STRONGEST (53.6x fundamental!)
+            // - 4th harmonic is STRONGEST at 53.6x fundamental amplitude
             // - 6th harmonic: 23.1x, 8th: 20.8x, 2nd: 15.7x, 10th: 15.5x
             // - This extreme harmonic content creates the characteristic Rhodes "bell" sound
             //
@@ -212,8 +212,9 @@ namespace Instrument
             );
 
             // Softer velocity curve to prevent harsh attacks
-            // Compress high velocities using power curve
-            float adjustedVelocity = pow(velocity, 0.85f);  // Increased from 0.75 for more dynamic range
+            // Using power curve to compress high velocities
+            // Exponent increased from 0.75 to 0.85 for slightly more dynamic range
+            float adjustedVelocity = pow(velocity, 0.85f);
             
             var v = (velocity100 * adjustedVelocity) + (velocity0 * (1.0f - adjustedVelocity));
 
@@ -635,7 +636,7 @@ processor AmplitudeSource
     // Output gain compensation for strong harmonic content
     // Original Rhodes analysis showed harmonics H2-H14 sum to ~8.3x the fundamental
     // Previous implementation had harmonics sum to ~1.0x the fundamental
-    // Scale by ~1/8 to compensate: 0.12 = 1/(8.3) rounded for headroom
+    // Scale by 0.12 ≈ 1/8.3 to compensate and provide slight headroom
     let harmonicGainCompensation = 0.12f;
     
     // Attack envelope constants

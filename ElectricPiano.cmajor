@@ -152,6 +152,11 @@ namespace Instrument
             // - 3rd harmonic is strong (0.91x fundamental)
             // - Higher harmonics decay naturally
             // This creates the characteristic Rhodes "bell" sound
+            //
+            // NOTE: The 2nd harmonic being stronger than fundamental is CORRECT
+            // and characteristic of Rhodes piano. The tine vibration produces
+            // strong even harmonics due to the pickup position and asymmetric
+            // vibration mode. This is what gives Rhodes its distinctive tone.
             let velocity100 = float<Instrument::harmonics> (
                 0.100f,   // Fundamental (normalized reference)
                 0.263f,   // 2nd harmonic - STRONGEST (characteristic Rhodes)
@@ -630,7 +635,11 @@ processor AmplitudeSource
         release      = params.getRelease (e.pitch);
         decay        = params.getDecay (e.pitch);
         targetAmplitudes = params.getInitialAmplitudes (e.pitch, e.velocity);
-        currentValue = targetAmplitudes * 0.0f; // Start from zero
+        
+        // Initialize to zero for smooth attack
+        for (wrap<Instrument::harmonics> i)
+            currentValue[i] = 0.0f;
+            
         released     = false;
         
         // Start fast attack envelope (2-3ms to peak based on WAV analysis)
@@ -650,11 +659,12 @@ processor AmplitudeSource
         loop
         {
             // Fast attack envelope to smooth note onset (prevents clicks/harshness)
+            // Target: 2.4ms attack at 44.1kHz = ~106 samples
+            // Using 1-pole exponential: reaches 63% in ~15 samples with rate 0.065
+            // Reaches 99% in ~70 samples (~1.6ms), 99.9% in ~106 samples (~2.4ms)
             if (inAttack && attackEnvelope < attackTarget)
             {
-                // Attack time: ~2.4ms at 44.1kHz = ~106 samples
-                // Use exponential curve for natural sound
-                float attackRate = 0.065f; // Tuned for ~2.4ms attack
+                float attackRate = 0.065f; // Exponential rate constant
                 attackEnvelope += (attackTarget - attackEnvelope) * attackRate;
                 
                 if (attackEnvelope > 0.999f)
@@ -674,14 +684,18 @@ processor AmplitudeSource
                 
                 // Soft saturation to prevent harshness
                 // Apply gentle compression similar to tube amp
+                let saturationThreshold = 0.7f;
+                let saturationHeadroom = 1.0f - saturationThreshold;
+                
                 for (wrap<Instrument::harmonics> i)
                 {
                     float sample = envelopedValue[i];
-                    // Soft clipping with smooth curve
-                    if (abs(sample) > 0.7f)
+                    // Soft clipping with smooth tanh curve
+                    if (abs(sample) > saturationThreshold)
                     {
-                        float excess = (abs(sample) - 0.7f) / 0.3f;
-                        float compressed = 0.7f + 0.3f * tanh(excess);
+                        float excess = (abs(sample) - saturationThreshold) / saturationHeadroom;
+                        // tanh provides smooth compression: linear near 0, approaches 1 asymptotically
+                        float compressed = saturationThreshold + saturationHeadroom * tanh(excess);
                         sample = compressed * sign(sample);
                         envelopedValue[i] = sample;
                     }
@@ -847,6 +861,8 @@ processor HammerModel
     void main()
     {
         rng.seed(12345);
+        
+        let hammerSaturationScale = 0.9f; // Saturation curve scaling
 
         loop
         {
@@ -856,7 +872,7 @@ processor HammerModel
             x = x * (1.0f + stiff * 0.3f); // Reduced from 0.5f
             
             // Gentler saturation curve
-            x = tanh(x * 0.9f) / 0.9f; // Softer clipping
+            x = tanh(x * hammerSaturationScale) / hammerSaturationScale;
 
             // Stärke - more moderate scaling
             x = x * (0.6f + str * 0.3f); // Reduced range from (0.5f + str)

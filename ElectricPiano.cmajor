@@ -616,6 +616,15 @@ processor AmplitudeSource
 
     Instrument::Params params;
     let interpolatedSteps = 64;
+    
+    // Attack envelope constants
+    let attackRate = 0.065f;        // Exponential rate: reaches 99.9% in ~106 samples (~2.4ms)
+    let attackCompleteThreshold = 0.999f;
+    
+    // Soft saturation constants
+    let saturationThreshold = 0.7f;
+    let saturationHeadroom = 1.0f - saturationThreshold;
+    
     float<Instrument::harmonics> currentValue, release, decay, targetAmplitudes;
     bool released = false;
     
@@ -629,6 +638,12 @@ processor AmplitudeSource
     {
         params = p;
     }
+    
+    void initializeToZero (float<Instrument::harmonics>& array)
+    {
+        for (wrap<Instrument::harmonics> i)
+            array[i] = 0.0f;
+    }
 
     event eventsIn (std::notes::NoteOn e)
     {
@@ -637,8 +652,7 @@ processor AmplitudeSource
         targetAmplitudes = params.getInitialAmplitudes (e.pitch, e.velocity);
         
         // Initialize to zero for smooth attack
-        for (wrap<Instrument::harmonics> i)
-            currentValue[i] = 0.0f;
+        initializeToZero (currentValue);
             
         released     = false;
         
@@ -664,10 +678,9 @@ processor AmplitudeSource
             // Reaches 99% in ~70 samples (~1.6ms), 99.9% in ~106 samples (~2.4ms)
             if (inAttack && attackEnvelope < attackTarget)
             {
-                float attackRate = 0.065f; // Exponential rate constant
                 attackEnvelope += (attackTarget - attackEnvelope) * attackRate;
                 
-                if (attackEnvelope > 0.999f)
+                if (attackEnvelope > attackCompleteThreshold)
                 {
                     attackEnvelope = 1.0f;
                     inAttack = false;
@@ -684,9 +697,6 @@ processor AmplitudeSource
                 
                 // Soft saturation to prevent harshness
                 // Apply gentle compression similar to tube amp
-                let saturationThreshold = 0.7f;
-                let saturationHeadroom = 1.0f - saturationThreshold;
-                
                 for (wrap<Instrument::harmonics> i)
                 {
                     float sample = envelopedValue[i];

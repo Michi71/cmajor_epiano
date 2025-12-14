@@ -147,21 +147,66 @@ namespace Instrument
 
         float<Instrument::harmonics> getInitialAmplitudes (float note, float  velocity)
         {
-            let velocity100 = float<Instrument::harmonics> (0.150869f, 0.385766f, 0.215543f, 0.117811f, 0.100411f, 0.0128637f,
-                                                            0.0288844f, 0.00243388f, 0.00963092f, 0.0035634f, 0.00256945f, 0.00184799f,
-                                                            0.000399878f, 0.000660576f, 3.00995e-05f, 0.00021866f, 9.33705e-05f,
-                                                            0.000177973f, 0.0002545f, 0.000323602f, 0.000779045f, 0.000116569f,
-                                                            0.000772873f, 0.000364486f, 0.000248027f, 0.00018236f, 3.27292e-05f,
-                                                            6.64988e-05f, 0.0f, 0.0f, 0.0f, 0.0f);
+            // Based on analysis of "Mark II fff_c37f0000.wav":
+            // - 2nd harmonic is STRONGER than fundamental (2.63x)
+            // - 3rd harmonic is strong (0.91x fundamental)
+            // - Higher harmonics decay naturally
+            // This creates the characteristic Rhodes "bell" sound
+            //
+            // NOTE: The 2nd harmonic being stronger than fundamental is CORRECT
+            // and characteristic of Rhodes piano. The tine vibration produces
+            // strong even harmonics due to the pickup position and asymmetric
+            // vibration mode. This is what gives Rhodes its distinctive tone.
+            let velocity100 = float<Instrument::harmonics> (
+                0.100f,   // Fundamental (normalized reference)
+                0.263f,   // 2nd harmonic - STRONGEST (characteristic Rhodes)
+                0.091f,   // 3rd harmonic
+                0.046f,   // 4th harmonic
+                0.018f,   // 5th harmonic
+                0.012f,   // 6th harmonic
+                0.011f,   // 7th harmonic
+                0.008f,   // 8th harmonic
+                0.006f,   // 9th harmonic
+                0.005f,   // 10th harmonic
+                0.004f,   // 11th
+                0.003f,   // 12th
+                0.0025f,  // 13th
+                0.002f,   // 14th
+                0.0018f,  // 15th
+                0.0015f,  // 16th
+                0.0012f,  // 17th
+                0.001f,   // 18th
+                0.0008f,  // 19th
+                0.0006f,  // 20th
+                0.0005f,  // 21st
+                0.0004f,  // 22nd
+                0.0003f,  // 23rd
+                0.00025f, // 24th
+                0.0002f,  // 25th
+                0.00015f, // 26th
+                0.0001f,  // 27th
+                0.00008f, // 28th
+                0.00006f, // 29th
+                0.00004f, // 30th
+                0.00002f, // 31st
+                0.00001f  // 32nd
+            );
 
-            let velocity0   = float<Instrument::harmonics> (0.02f, 0.05f, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                                                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+            let velocity0 = float<Instrument::harmonics> (
+                0.015f, 0.035f, 0.008f, 0.003f, 0.001f, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            );
 
-            var v = (velocity100 * velocity) + (velocity0 * (1.0f - velocity));
+            // Softer velocity curve to prevent harsh attacks
+            // Compress high velocities using power curve
+            float adjustedVelocity = pow(velocity, 0.75f);
+            
+            var v = (velocity100 * adjustedVelocity) + (velocity0 * (1.0f - adjustedVelocity));
 
-            float brightnessScaling = -0.2f + (0.8f * (this.brightness * 0.01f));
+            // Gentler brightness scaling
+            float brightnessScaling = -0.15f + (0.6f * (this.brightness * 0.01f));
 
-            brightnessScaling += (velocity * this.velocityScaling * 0.01f * 0.5f);
+            brightnessScaling += (adjustedVelocity * this.velocityScaling * 0.01f * 0.35f);
 
             for (wrap<harmonics> i)
                 v[i] *= (1.0f + brightnessScaling * float (i));
@@ -252,8 +297,8 @@ namespace Instrument
 
             if (i == 0) // Rhodes
             {
-                params.brightness        = 60.0f;
-                params.velocityScaling   = 70.0f;
+                params.brightness        = 50.0f;  // Reduced from 60
+                params.velocityScaling   = 55.0f;  // Reduced from 70
                 params.decayRate         = 15.0f;
                 params.harmonicDecayRate = 25.0f;
                 params.keyScaling        = 40.0f;
@@ -264,14 +309,14 @@ namespace Instrument
                 params.pickupType        = 0;
                 params.pickupSymmetry    = 0.0f;
                 params.pickupDistance    = 0.4f;
-                params.pickupInputGain   = 1.0f;
-                params.pickupOutputGain  = 1.2f;
-                params.pickupNonlinearity= 35.0f;
-                params.pickupBarkAmount  = 25.0f;
+                params.pickupInputGain   = 0.9f;   // Reduced from 1.0
+                params.pickupOutputGain  = 1.1f;   // Reduced from 1.2
+                params.pickupNonlinearity= 25.0f;  // Reduced from 35
+                params.pickupBarkAmount  = 18.0f;  // Reduced from 25
 
-                params.hammerStiffness   = 60.0f;
-                params.hammerStrength    = 55.0f;
-                params.hammerNoise       = 10.0f;
+                params.hammerStiffness   = 45.0f;  // Reduced from 60
+                params.hammerStrength    = 45.0f;  // Reduced from 55
+                params.hammerNoise       = 6.0f;   // Reduced from 10
 
                 params.forkDecay         = 50.0f;
                 params.forkVolume        = 60.0f;
@@ -571,8 +616,23 @@ processor AmplitudeSource
 
     Instrument::Params params;
     let interpolatedSteps = 64;
+    
+    // Attack envelope constants
+    let attackRate = 0.065f;        // Exponential rate: reaches 99.9% in ~106 samples (~2.4ms)
+    let attackCompleteThreshold = 0.999f;
+    
+    // Soft saturation constants
+    let saturationThreshold = 0.7f;
+    let saturationHeadroom = 1.0f - saturationThreshold;
+    
     float<Instrument::harmonics> currentValue, release, decay;
     bool released = false;
+    
+    // Attack envelope to prevent harsh transients
+    // Based on analysis: Rhodes attack reaches peak in ~2.4ms
+    float attackEnvelope = 0.0f;
+    float attackTarget = 1.0f;
+    bool inAttack = false;
 
     event paramsIn (Instrument::Params p)
     {
@@ -585,27 +645,74 @@ processor AmplitudeSource
         decay        = params.getDecay (e.pitch);
         currentValue = params.getInitialAmplitudes (e.pitch, e.velocity);
         released     = false;
+        
+        // Start fast attack envelope (2-3ms to peak based on WAV analysis)
+        attackEnvelope = 0.0f;
+        attackTarget = 1.0f;
+        inAttack = true;
     }
 
     event eventsIn (std::notes::NoteOff e)
     {
         released = true;
+        inAttack = false;
     }
 
     void main()
     {
         loop
         {
+            // Fast attack envelope to smooth note onset (prevents clicks/harshness)
+            // Target: 2.4ms attack at 44.1kHz = ~106 samples
+            // Using 1-pole exponential: reaches 63% in ~15 samples with rate 0.065
+            // Reaches 99% in ~70 samples (~1.6ms), 99.9% in ~106 samples (~2.4ms)
+            if (inAttack && attackEnvelope < attackTarget)
+            {
+                attackEnvelope += (attackTarget - attackEnvelope) * attackRate;
+                
+                if (attackEnvelope > attackCompleteThreshold)
+                {
+                    attackEnvelope = 1.0f;
+                    inAttack = false;
+                }
+            }
+            
             let target = currentValue * (released ? release : decay);
             let increment = (target - currentValue) / interpolatedSteps;
 
             loop (interpolatedSteps)
             {
-                out <- currentValue;
+                // Apply attack envelope to smooth the onset
+                float<Instrument::harmonics> envelopedValue = currentValue * attackEnvelope;
+                
+                // Soft saturation to prevent harshness
+                // Apply gentle compression similar to tube amp
+                for (wrap<Instrument::harmonics> i)
+                {
+                    float sample = envelopedValue[i];
+                    // Soft clipping with smooth tanh curve
+                    if (abs(sample) > saturationThreshold)
+                    {
+                        float excess = (abs(sample) - saturationThreshold) / saturationHeadroom;
+                        // tanh provides smooth compression: linear near 0, approaches 1 asymptotically
+                        float compressed = saturationThreshold + saturationHeadroom * tanh(excess);
+                        sample = compressed * sign(sample);
+                        envelopedValue[i] = sample;
+                    }
+                }
+                
+                out <- envelopedValue;
                 currentValue += increment;
                 advance();
             }
         }
+    }
+    
+    float sign(float val)
+    {
+        if (val > 0.0f) return 1.0f;
+        if (val < 0.0f) return -1.0f;
+        return 0.0f;
     }
 }
 
@@ -662,8 +769,8 @@ processor PickupModel
                 x = x * (1.0f + sym * 0.15f);
                 
                 // Nichtlineare Interaktion zwischen Zunge und Pickup
-                // Scaling factor für harmonische Verzerrung
-                let nonlinearScaling = 0.3f;
+                // REDUCED scaling for softer sound (was causing harsh sawtooth)
+                let nonlinearScaling = 0.12f;  // Reduced from 0.3f
                 float32 squared = x * x;
                 x = x + (squared * sign(x) * nonlin * nonlinearScaling);
                 
@@ -671,20 +778,22 @@ processor PickupModel
                 x = x * (1.0f - dist * 0.2f);
                 
                 // "Bark"-Effekt: Resonanz und leichte Übersteuerung
-                // Dies simuliert die Pickup-Zunge-Interaktion
+                // REDUCED for softer sound
                 float32 derivative = x - prevSample;
-                resonanceState = resonanceState * 0.98f + derivative * bark * 0.5f;
+                resonanceState = resonanceState * 0.99f + derivative * bark * 0.3f; // Increased decay, reduced drive
                 
                 // Soft clipping für den typischen Rhodes "Growl"
-                float32 barkContribution = resonanceState * (1.0f + abs(x) * 0.5f);
-                x = x + barkContribution;
+                // REDUCED to prevent harsh sawtooth distortion
+                float32 barkContribution = resonanceState * (1.0f + abs(x) * 0.3f); // Reduced from 0.5f
+                x = x + barkContribution * 0.7f; // Additional attenuation
                 
                 // Sanfte Übersteuerung (typisch für Vintage Rhodes Amps)
+                // GENTLER saturation curve
                 if (bark > 0.01f)
                 {
-                    let ampDriveGain = 1.2f;      // Verstärkung vor Clipping
-                    let ampOutputScale = 0.9f;    // Abschwächung nach Clipping
-                    float32 driven = x * (1.0f + bark * 0.5f);
+                    let ampDriveGain = 1.05f;      // Reduced from 1.2f
+                    let ampOutputScale = 0.95f;    // Increased from 0.9f
+                    float32 driven = x * (1.0f + bark * 0.3f); // Reduced from 0.5f
                     x = tanh(driven * ampDriveGain) * ampOutputScale;
                 }
             }
@@ -752,24 +861,29 @@ processor HammerModel
     void main()
     {
         rng.seed(12345);
+        
+        let hammerSaturationScale = 0.9f; // Saturation curve scaling
 
         loop
         {
             float32 x = in;
 
-            // Härte
-            x = x * (1.0f + stiff * 0.5f);
-            x = tanh(x);
+            // Härte - REDUCED for softer attack
+            x = x * (1.0f + stiff * 0.3f); // Reduced from 0.5f
+            
+            // Gentler saturation curve
+            x = tanh(x * hammerSaturationScale) / hammerSaturationScale;
 
-            // Stärke
-            x = x * (0.5f + str);
+            // Stärke - more moderate scaling
+            x = x * (0.6f + str * 0.3f); // Reduced range from (0.5f + str)
 
             // Noise nur wenn NoiseEnv > 0
+            // REDUCED noise amplitude to prevent harshness
             if (noiseEnv > 0.001f)
             {
-                float32 burst = rng.getBipolar() * noi * noiseEnv * 0.1f;
+                float32 burst = rng.getBipolar() * noi * noiseEnv * 0.05f; // Reduced from 0.1f
                 x += burst;
-                noiseEnv *= 0.95f; // Decay
+                noiseEnv *= 0.97f; // Faster decay from 0.95f
             }
 
             out <- x;

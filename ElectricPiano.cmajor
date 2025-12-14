@@ -625,7 +625,7 @@ processor AmplitudeSource
     let saturationThreshold = 0.7f;
     let saturationHeadroom = 1.0f - saturationThreshold;
     
-    float<Instrument::harmonics> currentValue, release, decay, targetAmplitudes;
+    float<Instrument::harmonics> currentValue, release, decay;
     bool released = false;
     
     // Attack envelope to prevent harsh transients
@@ -638,22 +638,12 @@ processor AmplitudeSource
     {
         params = p;
     }
-    
-    void initializeToZero (float<Instrument::harmonics>& array)
-    {
-        for (wrap<Instrument::harmonics> i)
-            array[i] = 0.0f;
-    }
 
     event eventsIn (std::notes::NoteOn e)
     {
         release      = params.getRelease (e.pitch);
         decay        = params.getDecay (e.pitch);
-        targetAmplitudes = params.getInitialAmplitudes (e.pitch, e.velocity);
-        
-        // Initialize to zero for smooth attack
-        initializeToZero (currentValue);
-            
+        currentValue = params.getInitialAmplitudes (e.pitch, e.velocity);
         released     = false;
         
         // Start fast attack envelope (2-3ms to peak based on WAV analysis)

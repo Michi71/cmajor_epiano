@@ -527,12 +527,16 @@ processor HammerNoise
     float attackEnv = 0.0f;
     float velocity = 0.0f;
     float lpY1 = 0.0f;
+    float lpA = 0.0f;
+    float lpB = 0.0f;
+    float decayFactor = 0.92f;
 
     event paramsIn (EPMK1::Params p) { params = p; }
 
     event eventsIn (std::notes::NoteOn e)
     {
-        velocity = e.velocity;
+        // Clamp velocity to avoid edge cases
+        velocity = clamp(e.velocity, 0.008f, 1.0f);
         
         // Velocity-sensitive amplitude formula: 2^((1-((v-1)/126))*-4)
         // Gives -24 dB for soft strikes (v=0.008) to 0 dB for hard strikes (v=1.0)
@@ -543,6 +547,19 @@ processor HammerNoise
         // Second shorter attack burst for high velocity "growl"
         // Only active above velocity 0.6
         attackEnv = (velocity > 0.6f) ? (velocity - 0.6f) * 2.5f : 0.0f;
+        
+        // Pre-calculate velocity-sensitive low-pass filter coefficients
+        // Low velocity: darker (500 Hz), high velocity: brighter (5000 Hz)
+        float lpFreq = 500.0f + velocity * 4500.0f;
+        lpB = exp(-float(twoPi) * lpFreq / float(processor.frequency));
+        lpA = 1.0f - lpB;
+        
+        // Pre-calculate velocity-sensitive decay rate
+        // High velocity: slower decay (more sustain), low velocity: faster decay
+        decayFactor = 0.92f + velocity * 0.04f;  // Range: 0.92 to 0.96
+        
+        // Reset filter state
+        lpY1 = 0.0f;
     }
 
     void main()
@@ -555,11 +572,7 @@ processor HammerNoise
             {
                 float noise = rng.getBipolar();
                 
-                // Velocity-sensitive low-pass filter
-                // Low velocity: darker (500 Hz), high velocity: brighter (5000 Hz)
-                float lpFreq = 500.0f + velocity * 4500.0f;
-                float lpB = exp(-float(twoPi) * lpFreq / float(processor.frequency));
-                float lpA = 1.0f - lpB;
+                // Apply velocity-sensitive low-pass filter
                 lpY1 = lpA * noise + lpB * lpY1;
                 
                 // Mix main envelope with attack burst
@@ -568,9 +581,7 @@ processor HammerNoise
                 float level = pow(10.0f, params.hammerLevel / 20.0f);
                 audioOut <- lpY1 * combinedEnv * level;
                 
-                // Velocity-sensitive decay rate
-                // High velocity: slower decay (more sustain), low velocity: faster decay
-                float decayFactor = 0.92f + velocity * 0.04f;  // Range: 0.92 to 0.96
+                // Apply velocity-sensitive decay rates
                 env *= decayFactor;
                 
                 // Attack burst decays much faster
@@ -615,7 +626,7 @@ processor NoteOffNoise
         {
             if (env > 0.0001f)
             {
-                float noise = rng. getBipolar();
+                float noise = rng.getBipolar();
                 float level = pow(10.0f, params.noteOffLevel / 20.0f);
                 audioOut <- noise * env * level;
                 env *= 0.90f;

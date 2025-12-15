@@ -7,6 +7,5 @@
     "category":         "generator",
     "manufacturer":     "Mike Moreno Audio (Cmajor port)",
     "isInstrument":     true,
-
     "source":           "ep-mk1.cmajor"
 }

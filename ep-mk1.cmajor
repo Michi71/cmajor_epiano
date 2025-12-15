@@ -467,9 +467,10 @@ processor PickupModel
             else
                 x *= (1.0f / sym);
 
-            // Buzz effect (fourth power with phase)
+            // Buzz effect (fourth power with phase) - efficient computation
             float buzz = pow(10.0f, params.pickupBuzz / 20.0f);
-            float buzzSig = pow(abs(x), 4.0f);
+            float x2 = x * x;
+            float buzzSig = x2 * x2;
             if (params.buzzPhase)
                 buzzSig = -buzzSig;
             x += buzzSig * buzz;
@@ -673,16 +674,17 @@ processor TremoloEffect
                 
                 // Morph between sine and triangle
                 float sine = sin(lfoPhase * float(twoPi));
-                float triangle = abs(lfoPhase * 4.0f - 2.0f) - 1.0f;
+                // Generate proper triangle wave: maps phase [0,1] to triangle [-1,1]
+                float triangle = 4.0f * abs(lfoPhase - 0.5f) - 1.0f;
                 lfo = sine * (1.0f - shape) + triangle * shape;
 
                 // Apply depth
                 float depth = pow(10.0f, params.tremoloDepth / 20.0f);
                 float mod = 1.0f + lfo * depth;
 
-                // Stereo panning based on LFO
+                // Stereo panning based on LFO (pan=0 is left, pan=1 is right)
                 float pan = (lfo + 1.0f) * 0.5f;  // 0..1
-                out <- float<2>(x * mod * sqrt(1.0f - pan), x * mod * sqrt(pan));
+                out <- float<2>(x * mod * sqrt(pan), x * mod * sqrt(1.0f - pan));
             }
             else
             {

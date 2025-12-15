@@ -539,8 +539,10 @@ processor HammerNoise
         velocity = clamp(e.velocity, 0.008f, 1.0f);
         
         // Velocity-sensitive amplitude formula: 2^((1-((v-1)/126))*-4)
-        // Gives -24 dB for soft strikes (v=0.008) to 0 dB for hard strikes (v=1.0)
-        float normalizedVel = (velocity * 127.0f - 1.0f) / 126.0f;
+        // Where v is MIDI velocity [1, 127]. Convert from [0, 1] to [1, 127]
+        // Gives -24 dB for soft strikes (v≈1) to 0 dB for hard strikes (v=127)
+        float midiVel = 1.0f + velocity * 126.0f;
+        float normalizedVel = (midiVel - 1.0f) / 126.0f;
         float exponent = (1.0f - normalizedVel) * -4.0f;
         env = pow(2.0f, exponent);  // This implements 2^((1-((v-1)/126))*-4)
         

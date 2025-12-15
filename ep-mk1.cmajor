@@ -1,357 +1,698 @@
-/*
-    Electric Piano MK1
-    
-    Based on the DX7-style FM synthesis approach used in classic electric pianos.
-    This implementation uses 4 operators with specific algorithms to create
-    bell-like tones characteristic of the Rhodes-style electric piano sound.
-*/
+//
+//     ,ad888ba,                              88
+//    d8"'    "8b
+//   d8            88,dba,,adba,   ,aPP8A.A8  88     (C)2024 Cmajor Software Ltd
+//   Y8,           88    88    88  88     88  88
+//    Y8a.   .a8P  88    88    88  88,   ,88  88     https://cmajor.dev
+//     '"Y888Y"'   88    88    88  '"8bbP"Y8  88
+//                                           ,88
+//                                        888P"
+//
+//  EP-MK1 Physical Modeled Electric Piano
+//  Converted from Pure Data patch by Mike Moreno
+//  Original: https://mikemorenoaudio.wordpress.com/2019/01/10/ep-mk1-physical-modeled-electric-piano-vst/
+//
 
-// Move namespace EPMK1 with Params struct here, before the main graph
+graph EPMK1  [[ main ]]
+{
+    input event std::midi::Message midiIn  [[ name: "MIDI input" ]];
+    output stream float<2> audioOut  [[ name: "Audio Out" ]];
+
+    node
+    {
+        voices          = Voice[32];  // 32 voices like the PD patch
+        voiceAllocator  = std::voices::VoiceAllocator(32);
+        paramsProcessor = EPMK1::ParamsProcessor;
+        masterGain      = MasterGain;
+        tremolo         = TremoloEffect;
+    }
+
+    connection
+    {
+        midiIn -> std::midi::MPEConverter -> voiceAllocator -> voices.eventsIn;
+
+        paramsProcessor.paramsOut -> voices.paramsIn, masterGain.paramsIn, tremolo.paramsIn;
+
+        voices.audioOut -> masterGain.in;
+        masterGain.out  -> tremolo.in;
+        tremolo.out     -> audioOut;
+    }
+}
+
+//==============================================================================
+// Parameter Structure
+//==============================================================================
+
 namespace EPMK1
 {
     struct Params
     {
-        float32 attack;
-        float32 decay;
-        float32 sustain;
-        float32 release;
-        float32 modDepth;
-        float32 bellAmount;
-        float32 tineAmount;
-        float32 releaseAmount;
-        float32 velocitySens;
-        float32 chorus;
+        // Tine Section
+        float tineRatio1;      // Partial ratio 1
+        float tineRatio2;      // Partial ratio 2
+        float tineHighpass;    // High-pass filter freq (Hz)
+        float tineDecay;       // Decay time
+        float tineLevel;       // Level (dB)
+        float tineSend;        // Send to pickup (dB)
+
+        // Tone Bar Section
+        float toneDecay;       // Decay time
+        float toneRelease;     // Release time
+        float toneLevel;       // Level (dB)
+        bool  pedalDown;       // Sustain pedal
+
+        // Pickup Section
+        float pickupGain;      // Input gain (dB)
+        float pickupLowpass;   // Low-pass filter freq (Hz)
+        float pickupSymmetry;  // Asymmetry (dB)
+        float pickupLevel;     // Output level (dB)
+        float pickupAttack;    // Attack noise (dB)
+        float pickupBuzz;      // Buzz level (dB)
+        bool  buzzPhase;       // Buzz phase inversion
+
+        // Hammer Section
+        float hammerLevel;     // Hammer noise level (dB)
+        float noteOffLevel;    // Note-off noise level (dB)
+
+        // Tremolo Section
+        float tremoloRate;     // LFO rate (Hz)
+        float tremoloShape;    // Shape (0=sine, 127=triangle)
+        float tremoloDepth;    // Depth (dB)
+        bool  tremoloOn;       // On/Off
+
+        // Master
+        float masterLevel;     // Master output (dB)
+
+        // Tuning
+        float baseFrequency;   // Base frequency (Hz)
+        int   baseMidiNote;    // Base MIDI note
+        int   numDivisions;    // Number of divisions
+        int   intervalDivide;  // Interval to divide
+        bool  useTextScale;    // Use text-based scale
     }
 
     Params createDefaultParams()
     {
         Params p;
-        p.attack = 0.001f;
-        p.decay = 0.3f;
-        p.sustain = 0.7f;
-        p.release = 0.5f;
-        p.modDepth = 0.5f;
-        p.bellAmount = 0.5f;
-        p.tineAmount = 0.5f;
-        p.releaseAmount = 0.5f;
-        p.velocitySens = 0.5f;
-        p.chorus = 0.3f;
+
+        // Tine defaults (from PD patch)
+        p.tineRatio1 = 7.0f;
+        p.tineRatio2 = 20.0f;
+        p.tineHighpass = 1500.0f;
+        p.tineDecay = 500.0f;
+        p.tineLevel = -16.0f;
+        p.tineSend = -12.0f;
+
+        // Tone Bar defaults
+        p.toneDecay = 1000.0f;
+        p.toneRelease = 10.0f;
+        p.toneLevel = -6.0f;
+        p.pedalDown = false;
+
+        // Pickup defaults
+        p.pickupGain = 13.0f;
+        p.pickupLowpass = 1000.0f;
+        p.pickupSymmetry = 15.0f;
+        p.pickupLevel = -12.0f;
+        p.pickupAttack = 3.0f;
+        p.pickupBuzz = -6.0f;
+        p.buzzPhase = true;
+
+        // Hammer defaults
+        p.hammerLevel = -24.0f;
+        p.noteOffLevel = -30.0f;
+
+        // Tremolo defaults
+        p.tremoloRate = 3.0f;
+        p.tremoloShape = 0.0f;
+        p.tremoloDepth = -9.0f;
+        p.tremoloOn = true;
+
+        // Master
+        p.masterLevel = 0.0f;
+
+        // Tuning defaults
+        p.baseFrequency = 440.0f;
+        p.baseMidiNote = 69;
+        p.numDivisions = 12;
+        p.intervalDivide = 2;
+        p.useTextScale = false;
+
         return p;
     }
+
+    //==============================================================================
+    // Parameter Processor
+    //==============================================================================
+
+    processor ParamsProcessor
+    {
+        output event EPMK1::Params paramsOut;
+
+        // Tine Section
+        input event float tineRatio1    [[ name: "Tine Ratio 1",     min: 0.0,   max: 30.0,   init: 7.0   ]];
+        input event float tineRatio2    [[ name: "Tine Ratio 2",     min: 0.0,   max: 30.0,   init: 20.0  ]];
+        input event float tineHighpass  [[ name: "Tine Highpass",    min: 20.0,  max: 20000.0, init: 1500.0, unit: "Hz" ]];
+        input event float tineDecay     [[ name: "Tine Decay",       min: 1.0,   max: 2000.0, init: 500.0  ]];
+        input event float tineLevel     [[ name: "Tine Level",       min: -100.0, max: 0.0,   init: -16.0, unit: "dB" ]];
+        input event float tineSend      [[ name: "Tine Send",        min: -100.0, max: 24.0,  init: -12.0, unit: "dB" ]];
+
+        // Tone Bar Section
+        input event float toneDecay     [[ name: "Tone Bar Decay",   min: 1.0,   max: 2000.0, init: 1000.0 ]];
+        input event float toneRelease   [[ name: "Tone Bar Release", min: 1.0,   max: 2000.0, init: 10.0   ]];
+        input event float toneLevel     [[ name: "Tone Bar Level",   min: -100.0, max: 0.0,   init: -6.0,  unit: "dB" ]];
+        input event bool  pedalDown     [[ name: "Sustain Pedal",    init: false ]];
+
+        // Pickup Section
+        input event float pickupGain    [[ name: "Pickup Gain",      min: 0.0,   max: 24.0,  init: 13.0,  unit: "dB" ]];
+        input event float pickupLowpass [[ name: "Pickup Lowpass",   min: 20.0,  max: 20000.0, init: 1000.0, unit: "Hz" ]];
+        input event float pickupSymmetry[[ name: "Pickup Symmetry",  min: 0.0,   max: 24.0,  init: 15.0,  unit: "dB" ]];
+        input event float pickupLevel   [[ name: "Pickup Level",     min: -100.0, max: 6.0,   init: -12.0, unit: "dB" ]];
+        input event float pickupAttack  [[ name: "Pickup Attack",    min: -100.0, max: 30.0,  init: 3.0,   unit: "dB" ]];
+        input event float pickupBuzz    [[ name: "Pickup Buzz",      min: -100.0, max: 0.0,   init: -6.0,  unit: "dB" ]];
+        input event bool  buzzPhase     [[ name: "Buzz Phase",       init: true  ]];
+
+        // Hammer Section
+        input event float hammerLevel   [[ name: "Hammer Level",     min: -100.0, max: 0.0,   init: -24.0, unit: "dB" ]];
+        input event float noteOffLevel  [[ name: "Note-off Level",   min: -100.0, max: 0.0,   init: -30.0, unit: "dB" ]];
+
+        // Tremolo Section
+        input event float tremoloRate   [[ name: "Tremolo Rate",     min: 0.0,   max: 20.0,  init: 3.0,   unit: "Hz" ]];
+        input event float tremoloShape  [[ name: "Tremolo Shape",    min: 0.0,   max: 127.0, init: 0.0    ]];
+        input event float tremoloDepth  [[ name: "Tremolo Depth",    min: -100.0, max: 0.0,   init: -9.0,  unit: "dB" ]];
+        input event bool  tremoloOn     [[ name: "Tremolo On",       init: true  ]];
+
+        // Master
+        input event float masterLevel   [[ name: "Master Level",     min: -100.0, max: 0.0,   init: 0.0,   unit: "dB" ]];
+
+        // Tuning
+        input event float baseFrequency [[ name: "Base Frequency",   min: 100.0, max: 20000.0, init: 440.0, unit: "Hz" ]];
+        input event int   baseMidiNote  [[ name: "Base MIDI Note",   min: 0,     max: 127,   init: 69     ]];
+        input event int   numDivisions  [[ name: "Num Divisions",    min: 1,     max: 100,   init: 12     ]];
+        input event int   intervalDivide[[ name: "Interval Divide",  min: 0,     max: 20,    init: 2      ]];
+        input event bool  useTextScale  [[ name: "Use Text Scale",   init: false ]];
+
+        EPMK1::Params params = createDefaultParams();
+
+        // Event handlers
+        event tineRatio1    (float f) { params.tineRatio1    = f; paramsOut <- params; }
+        event tineRatio2    (float f) { params.tineRatio2    = f; paramsOut <- params; }
+        event tineHighpass  (float f) { params.tineHighpass  = f; paramsOut <- params; }
+        event tineDecay     (float f) { params.tineDecay     = f; paramsOut <- params; }
+        event tineLevel     (float f) { params.tineLevel     = f; paramsOut <- params; }
+        event tineSend      (float f) { params.tineSend      = f; paramsOut <- params; }
+
+        event toneDecay     (float f) { params.toneDecay     = f; paramsOut <- params; }
+        event toneRelease   (float f) { params.toneRelease   = f; paramsOut <- params; }
+        event toneLevel     (float f) { params.toneLevel     = f; paramsOut <- params; }
+        event pedalDown     (bool b)  { params.pedalDown     = b; paramsOut <- params; }
+
+        event pickupGain    (float f) { params.pickupGain    = f; paramsOut <- params; }
+        event pickupLowpass (float f) { params.pickupLowpass = f; paramsOut <- params; }
+        event pickupSymmetry(float f) { params.pickupSymmetry= f; paramsOut <- params; }
+        event pickupLevel   (float f) { params.pickupLevel   = f; paramsOut <- params; }
+        event pickupAttack  (float f) { params.pickupAttack  = f; paramsOut <- params; }
+        event pickupBuzz    (float f) { params.pickupBuzz    = f; paramsOut <- params; }
+        event buzzPhase     (bool b)  { params.buzzPhase     = b; paramsOut <- params; }
+
+        event hammerLevel   (float f) { params.hammerLevel   = f; paramsOut <- params; }
+        event noteOffLevel  (float f) { params.noteOffLevel  = f; paramsOut <- params; }
+
+        event tremoloRate   (float f) { params.tremoloRate   = f; paramsOut <- params; }
+        event tremoloShape  (float f) { params.tremoloShape  = f; paramsOut <- params; }
+        event tremoloDepth  (float f) { params.tremoloDepth  = f; paramsOut <- params; }
+        event tremoloOn     (bool b)  { params.tremoloOn     = b; paramsOut <- params; }
+
+        event masterLevel   (float f) { params.masterLevel   = f; paramsOut <- params; }
+
+        event baseFrequency (float f) { params.baseFrequency = f; paramsOut <- params; }
+        event baseMidiNote  (int i)   { params.baseMidiNote  = i; paramsOut <- params; }
+        event numDivisions  (int i)   { params.numDivisions  = i; paramsOut <- params; }
+        event intervalDivide(int i)   { params.intervalDivide= i; paramsOut <- params; }
+        event useTextScale  (bool b)  { params.useTextScale  = b; paramsOut <- params; }
+    }
 }
 
-graph EPMK1  [[ main ]]
+//==============================================================================
+// Voice
+//==============================================================================
+
+graph Voice
 {
-    input event midi::Message midiIn;
-    
-    input event
-    {
-        float32 attack        [[ name: "Attack",         min: 0.001, max: 2.0,   init: 0.001, step: 0.001 ]];
-        float32 decay         [[ name: "Decay",          min: 0.01,  max: 5.0,   init: 0.3,   step: 0.01 ]];
-        float32 sustain       [[ name: "Sustain",        min: 0.0,   max: 1.0,   init: 0.7,   step: 0.01 ]];
-        float32 release       [[ name: "Release",        min: 0.01,  max: 5.0,   init: 0.5,   step: 0.01 ]];
-        float32 modDepth      [[ name: "Mod Depth",      min: 0.0,   max: 1.0,   init: 0.5,   step: 0.01 ]];
-        float32 bellAmount    [[ name: "Bell Amount",    min: 0.0,   max: 1.0,   init: 0.5,   step: 0.01 ]];
-        float32 tineAmount    [[ name: "Tine Amount",    min: 0.0,   max: 1.0,   init: 0.5,   step: 0.01 ]];
-        float32 releaseAmount [[ name: "Release Amount", min: 0.0,   max: 1.0,   init: 0.5,   step: 0.01 ]];
-        float32 velocitySens  [[ name: "Velocity Sens",  min: 0.0,   max: 1.0,   init: 0.5,   step: 0.01 ]];
-        float32 chorus        [[ name: "Chorus",         min: 0.0,   max: 1.0,   init: 0.3,   step: 0.01 ]];
-    }
-    
-    output stream float32<2> audioOut;
-    
+    input event EPMK1::Params paramsIn;
+    input event (std::notes::NoteOn, std::notes::NoteOff) eventsIn;
+
+    output stream float audioOut;
+
     node
     {
-        voices = EPVoice[16];
-        chorus = ChorusEffect;
+        tineModel    = TineModel;
+        toneBarModel = ToneBarModel;
+        pickupModel  = PickupModel;
+        hammerNoise  = HammerNoise;
+        noteOffNoise = NoteOffNoise;
+        mixer        = VoiceMixer;
     }
-    
+
     connection
     {
-        midiIn -> voices;
-        
-        attack        -> voices.attack;
-        decay         -> voices.decay;
-        sustain       -> voices.sustain;
-        release       -> voices.release;
-        modDepth      -> voices.modDepth;
-        bellAmount    -> voices.bellAmount;
-        tineAmount    -> voices.tineAmount;
-        releaseAmount -> voices.releaseAmount;
-        velocitySens  -> voices.velocitySens;
-        
-        voices -> chorus.audioIn;
-        chorus.audioOut -> audioOut;
-        
-        chorus -> chorus.depth;
+        paramsIn -> tineModel.paramsIn, toneBarModel.paramsIn, pickupModel.paramsIn,
+                    hammerNoise.paramsIn, noteOffNoise.paramsIn, mixer.paramsIn;
+        eventsIn -> tineModel.eventsIn, toneBarModel.eventsIn, hammerNoise.eventsIn, noteOffNoise.eventsIn;
+
+        tineModel.audioOut    -> mixer.tineIn;
+        toneBarModel.audioOut -> mixer.toneBarIn;
+        hammerNoise.audioOut  -> mixer.hammerIn;
+        noteOffNoise.audioOut -> mixer.noteOffIn;
+        mixer.audioOut        -> pickupModel.in;
+        pickupModel.out       -> audioOut;
     }
 }
 
-processor EPVoice
+//==============================================================================
+// Tine Model - Two resonators at different ratios
+//==============================================================================
+
+processor TineModel
 {
-    input event
-    {
-        midi::Message midiIn;
-        float32 attack;
-        float32 decay;
-        float32 sustain;
-        float32 release;
-        float32 modDepth;
-        float32 bellAmount;
-        float32 tineAmount;
-        float32 releaseAmount;
-        float32 velocitySens;
-    }
-    
-    output stream float32 audioOut;
-    
-    event midiIn (midi::Message m)
-    {
-        if (m.isNoteOn())
-        {
-            noteOn (m.getNoteNumber(), m.getVelocity());
-        }
-        else if (m.isNoteOff())
-        {
-            noteOff (m.getNoteNumber());
-        }
-    }
-    
-    event attack (float32 v)        { params.attack = v; }
-    event decay (float32 v)         { params.decay = v; }
-    event sustain (float32 v)       { params.sustain = v; }
-    event release (float32 v)       { params.release = v; }
-    event modDepth (float32 v)      { params.modDepth = v; }
-    event bellAmount (float32 v)    { params.bellAmount = v; }
-    event tineAmount (float32 v)    { params.tineAmount = v; }
-    event releaseAmount (float32 v) { params.releaseAmount = v; }
-    event velocitySens (float32 v)  { params.velocitySens = v; }
-    
+    input event EPMK1::Params paramsIn;
+    input event (std::notes::NoteOn, std::notes::NoteOff) eventsIn;
+    output stream float audioOut;
+
     EPMK1::Params params;
-    
-    struct NoteInfo
+    float noteFreq = 440.0f;
+    float velocity = 0.8f;
+
+    // Tine oscillators
+    float phase1 = 0.0f;
+    float phase2 = 0.0f;
+    float amp1 = 0.0f;
+    float amp2 = 0.0f;
+    bool noteActive = false;
+
+    // High-pass filter state
+    float hpState1 = 0.0f;
+    float hpState2 = 0.0f;
+
+    event paramsIn (EPMK1::Params p) { params = p; }
+
+    event eventsIn (std::notes::NoteOn e)
     {
-        bool active;
-        int note;
-        float32 phase1, phase2, phase3, phase4;
-        float32 targetVelocity;
-        float32 bendSemitones;
-        int envelopePhase;
-        float32 envelopeLevel;
-        float32 envelopeMultiplier;
+        noteFreq = std::notes::noteToFrequency(e.pitch);
+        velocity = e.velocity;
+        
+        // Initial amplitudes based on velocity
+        amp1 = velocity * 0.5f;
+        amp2 = velocity * 0.3f;
+        
+        noteActive = true;
     }
-    
-    NoteInfo[16] notes;
-    int nextNoteIndex;
-    
-    void noteOn (int note, float32 velocity)
+
+    event eventsIn (std::notes::NoteOff e)
     {
-        let info = &notes[nextNoteIndex];
-        
-        info.active = true;
-        info.note = note;
-        info.phase1 = 0.0f;
-        info.phase2 = 0.0f;
-        info.phase3 = 0.0f;
-        info.phase4 = 0.0f;
-        info.bendSemitones = 0.0f;
-        info.envelopePhase = 0;
-        info.envelopeLevel = 0.0f;
-        
-        let velocityScaled = velocity * 0.00787401574803149606f; // / 127.0
-        let sens = params.velocitySens;
-        info.targetVelocity = (velocityScaled * sens) + ((1.0f - sens) * 0.7f);
-        
-        nextNoteIndex = (nextNoteIndex + 1) % 16;
+        noteActive = false;
     }
-    
-    void noteOff (int note)
-    {
-        for (wrap<16> i)
-        {
-            if (notes[i].active && notes[i].note == note && notes[i].envelopePhase != 3)
-            {
-                notes[i].envelopePhase = 3;
-                return;
-            }
-        }
-    }
-    
+
     void main()
     {
-        params = EPMK1::createDefaultParams();
-        
         loop
         {
-            float32 output = 0.0f;
-            
-            for (wrap<16> i)
+            if (noteActive || amp1 > 0.0001f || amp2 > 0.0001f)
             {
-                if (notes[i].active)
-                {
-                    output += generateVoice (notes.at(i));
-                }
+                // Generate two tine partials at different ratios
+                float freq1 = noteFreq * params.tineRatio1;
+                float freq2 = noteFreq * params.tineRatio2;
+
+                float incr1 = float(twoPi * freq1 * processor.period);
+                float incr2 = float(twoPi * freq2 * processor.period);
+
+                phase1 += incr1;
+                phase2 += incr2;
+
+                if (phase1 > float(twoPi)) phase1 -= float(twoPi);
+                if (phase2 > float(twoPi)) phase2 -= float(twoPi);
+
+                float osc1 = sin(phase1);
+                float osc2 = sin(phase2);
+
+                // Apply decay
+                float decayRate = 1.0f - (1.0f / (params.tineDecay * float(processor.frequency) / 1000.0f));
+                amp1 *= decayRate;
+                amp2 *= decayRate;
+
+                float mixed = osc1 * amp1 + osc2 * amp2;
+
+                // High-pass filter (simple 1-pole)
+                float hpCoeff = 1.0f - exp(-float(twoPi) * params.tineHighpass / float(processor.frequency));
+                hpState1 += hpCoeff * (mixed - hpState1);
+                hpState2 += hpCoeff * (hpState1 - hpState2);
+                float filtered = mixed - hpState2;
+
+                // Apply level
+                float level = pow(10.0f, params.tineLevel / 20.0f);
+                audioOut <- filtered * level;
             }
-            
-            audioOut <- output;
+            else
+            {
+                audioOut <- 0.0f;
+            }
+
             advance();
         }
-    }
-    
-    float32 generateVoice (NoteInfo& info)
-    {
-        let frequency = noteToFrequency (info.note);
-        
-        updateEnvelope (info);
-        
-        if (info.envelopeLevel < 0.00001f && info.envelopePhase == 3)
-        {
-            info.active = false;
-            return 0.0f;
-        }
-        
-        let carrierIncrement = frequency / float32(processor.frequency);
-        
-        let modRatio1 = 14.0f;
-        let modRatio2 = 1.0f;
-        let modRatio3 = 3.5f;
-        let modRatio4 = 1.0f;
-        
-        let modIndex1 = params.modDepth * 5.0f * params.bellAmount;
-        let modIndex2 = params.modDepth * 2.0f * params.tineAmount;
-        let modIndex3 = params.modDepth * 1.0f * params.releaseAmount;
-        
-        info.phase1 += carrierIncrement * modRatio1;
-        info.phase2 += carrierIncrement * modRatio2;
-        info.phase3 += carrierIncrement * modRatio3;
-        info.phase4 += carrierIncrement * modRatio4;
-        
-        if (info.phase1 >= 1.0f) info.phase1 -= 1.0f;
-        if (info.phase2 >= 1.0f) info.phase2 -= 1.0f;
-        if (info.phase3 >= 1.0f) info.phase3 -= 1.0f;
-        if (info.phase4 >= 1.0f) info.phase4 -= 1.0f;
-        
-        let modulator1 = sin (info.phase1 * float32(twoPi)) * modIndex1;
-        let modulator2 = sin (info.phase2 * float32(twoPi)) * modIndex2;
-        let modulator3 = sin (info.phase3 * float32(twoPi)) * modIndex3;
-        
-        let modulatedPhase = info.phase4 + modulator1 + modulator2 + modulator3;
-        let carrier = sin (modulatedPhase * float32(twoPi));
-        
-        return carrier * info.envelopeLevel * info.targetVelocity * 0.3f;
-    }
-    
-    void updateEnvelope (NoteInfo& info)
-    {
-        if (info.envelopePhase == 0)
-        {
-            info.envelopeMultiplier = calculateMultiplier (info.envelopeLevel, 1.0f, params.attack);
-            info.envelopePhase = 1;
-        }
-        else if (info.envelopePhase == 1)
-        {
-            info.envelopeLevel *= info.envelopeMultiplier;
-            if (info.envelopeLevel >= 1.0f)
-            {
-                info.envelopeLevel = 1.0f;
-                info.envelopeMultiplier = calculateMultiplier (info.envelopeLevel, params.sustain, params.decay);
-                info.envelopePhase = 2;
-            }
-        }
-        else if (info.envelopePhase == 2)
-        {
-            info.envelopeLevel *= info.envelopeMultiplier;
-            if (info.envelopeLevel <= params.sustain)
-            {
-                info.envelopeLevel = params.sustain;
-            }
-        }
-        else if (info.envelopePhase == 3)
-        {
-            info.envelopeMultiplier = calculateMultiplier (info.envelopeLevel, 0.0f, params.release);
-            info.envelopePhase = 4;
-        }
-        else if (info.envelopePhase == 4)
-        {
-            info.envelopeLevel *= info.envelopeMultiplier;
-        }
-    }
-    
-    float32 calculateMultiplier (float32 startLevel, float32 endLevel, float32 lengthInSeconds)
-    {
-        let samples = lengthInSeconds * float32(processor.frequency);
-        if (samples < 1.0f) samples = 1.0f;
-        return pow (endLevel / max(startLevel, 0.0001f), 1.0f / samples);
-    }
-    
-    float32 noteToFrequency (int note)
-    {
-        return 440.0f * pow (2.0f, (float32(note) - 69.0f) / 12.0f);
     }
 }
 
-processor ChorusEffect
+//==============================================================================
+// Tone Bar Model - Resonator with decay and release
+//==============================================================================
+
+processor ToneBarModel
 {
-    input stream float32 audioIn;
-    output stream float32<2> audioOut;
-    input event float32 depth;
-    
-    float32 chorusDepth = 0.3f;
-    float32[4410] delayBuffer;
-    int writePos;
-    float32 lfoPhase;
-    
-    event depth (float32 v)
+    input event EPMK1::Params paramsIn;
+    input event (std::notes::NoteOn, std::notes::NoteOff) eventsIn;
+    output stream float audioOut;
+
+    EPMK1::Params params;
+    float noteFreq = 440.0f;
+    float velocity = 0.8f;
+
+    float phase = 0.0f;
+    float amp = 0.0f;
+    bool noteActive = false;
+
+    event paramsIn (EPMK1::Params p) { params = p; }
+
+    event eventsIn (std::notes::NoteOn e)
     {
-        chorusDepth = v;
+        noteFreq = std::notes::noteToFrequency(e.pitch);
+        velocity = e.velocity;
+        amp = velocity * 0.7f;
+        noteActive = true;
     }
-    
+
+    event eventsIn (std::notes::NoteOff e)
+    {
+        // If pedal is not down, trigger release
+        if (!params.pedalDown)
+            noteActive = false;
+    }
+
     void main()
     {
         loop
         {
-            let input = audioIn;
-            
-            delayBuffer[writePos] = input;
-            
-            lfoPhase += 0.5f / float32(processor.frequency);
-            if (lfoPhase >= 1.0f) lfoPhase -= 1.0f;
-            
-            let lfo1 = sin (lfoPhase * float32(twoPi));
-            let lfo2 = sin ((lfoPhase + 0.25f) * float32(twoPi));
-            
-            let maxDelay = 20.0f;
-            let delay1 = 5.0f + (lfo1 * maxDelay * chorusDepth);
-            let delay2 = 5.0f + (lfo2 * maxDelay * chorusDepth);
-            
-            let readPos1 = float32(writePos) - (delay1 * float32(processor.frequency) / 1000.0f);
-            let readPos2 = float32(writePos) - (delay2 * float32(processor.frequency) / 1000.0f);
-            
-            while (readPos1 < 0.0f) readPos1 += 4410.0f;
-            while (readPos2 < 0.0f) readPos2 += 4410.0f;
-            
-            let delayed1 = readDelayBuffer (readPos1);
-            let delayed2 = readDelayBuffer (readPos2);
-            
-            let dryWet = 0.5f;
-            let leftOut = input * (1.0f - dryWet) + delayed1 * dryWet * 0.7f;
-            let rightOut = input * (1.0f - dryWet) + delayed2 * dryWet * 0.7f;
-            
-            audioOut <- float32<2> (leftOut, rightOut);
-            
-            writePos = (writePos + 1) % 4410;
+            if (amp > 0.0001f)
+            {
+                // Generate fundamental
+                float incr = float(twoPi * noteFreq * processor.period);
+                phase += incr;
+                if (phase > float(twoPi)) phase -= float(twoPi);
+
+                float osc = sin(phase);
+
+                // Apply decay or release
+                float rate = noteActive ? params.toneDecay : params.toneRelease;
+                float decayRate = 1.0f - (1.0f / (rate * float(processor.frequency) / 1000.0f));
+                amp *= decayRate;
+
+                // Apply level
+                float level = pow(10.0f, params.toneLevel / 20.0f);
+                audioOut <- osc * amp * level;
+            }
+            else
+            {
+                audioOut <- 0.0f;
+            }
+
             advance();
         }
     }
-    
-    float32 readDelayBuffer (float32 pos)
+}
+
+//==============================================================================
+// Pickup Model - Nonlinear processing with filters
+//==============================================================================
+
+processor PickupModel
+{
+    input stream float in;
+    output stream float out;
+    input event EPMK1::Params paramsIn;
+
+    EPMK1::Params params;
+
+    // Low-pass filter state
+    float lpState1 = 0.0f;
+    float lpState2 = 0.0f;
+
+    // Nonlinear state
+    float prevSample = 0.0f;
+
+    event paramsIn (EPMK1::Params p) { params = p; }
+
+    void main()
     {
-        let index = int(pos);
-        let frac = pos - float32(index);
-        
-        let sample1 = delayBuffer[index % 4410];
-        let sample2 = delayBuffer[(index + 1) % 4410];
-        
-        return sample1 + (sample2 - sample1) * frac;
+        loop
+        {
+            float x = in;
+
+            // Apply input gain
+            float gain = pow(10.0f, params.pickupGain / 20.0f);
+            x *= gain;
+
+            // Asymmetric nonlinearity (pickup symmetry)
+            float sym = pow(10.0f, params.pickupSymmetry / 20.0f);
+            if (x > 0.0f)
+                x *= sym;
+            else
+                x *= (1.0f / sym);
+
+            // Buzz effect (fourth power with phase) - efficient computation
+            float buzz = pow(10.0f, params.pickupBuzz / 20.0f);
+            float x2 = x * x;
+            float buzzSig = x2 * x2;
+            if (params.buzzPhase)
+                buzzSig = -buzzSig;
+            x += buzzSig * buzz;
+
+            // Low-pass filter (2-pole Butterworth approximation)
+            float lpCoeff = 1.0f - exp(-float(twoPi) * params.pickupLowpass / float(processor.frequency));
+            lpState1 += lpCoeff * (x - lpState1);
+            lpState2 += lpCoeff * (lpState1 - lpState2);
+            x = lpState2;
+
+            // Soft saturation
+            x = tanh(x * 1.5f) / 1.5f;
+
+            // Apply output level
+            float level = pow(10.0f, params.pickupLevel / 20.0f);
+            out <- x * level;
+
+            prevSample = x;
+            advance();
+        }
+    }
+}
+
+//==============================================================================
+// Hammer Noise
+//==============================================================================
+
+processor HammerNoise
+{
+    input event EPMK1::Params paramsIn;
+    input event std::notes::NoteOn eventsIn;
+    output stream float audioOut;
+
+    EPMK1::Params params;
+    std::random::RNG rng;
+    float env = 0.0f;
+
+    event paramsIn (EPMK1::Params p) { params = p; }
+
+    event eventsIn (std::notes::NoteOn e)
+    {
+        env = e.velocity;
+    }
+
+    void main()
+    {
+        rng.seed(12345);
+
+        loop
+        {
+            if (env > 0.001f)
+            {
+                float noise = rng.getBipolar();
+                float level = pow(10.0f, params.hammerLevel / 20.0f);
+                audioOut <- noise * env * level;
+                env *= 0.95f;  // Fast decay
+            }
+            else
+            {
+                audioOut <- 0.0f;
+            }
+
+            advance();
+        }
+    }
+}
+
+//==============================================================================
+// Note-Off Noise
+//==============================================================================
+
+processor NoteOffNoise
+{
+    input event EPMK1::Params paramsIn;
+    input event std::notes::NoteOff eventsIn;
+    output stream float audioOut;
+
+    EPMK1::Params params;
+    std::random::RNG rng;
+    float env = 0.0f;
+
+    event paramsIn (EPMK1::Params p) { params = p; }
+
+    event eventsIn (std::notes::NoteOff e)
+    {
+        env = 0.5f;  // Fixed amplitude for note-off
+    }
+
+    void main()
+    {
+        rng.seed(54321);
+
+        loop
+        {
+            if (env > 0.001f)
+            {
+                float noise = rng.getBipolar();
+                float level = pow(10.0f, params.noteOffLevel / 20.0f);
+                audioOut <- noise * env * level;
+                env *= 0.93f;  // Fast decay
+            }
+            else
+            {
+                audioOut <- 0.0f;
+            }
+
+            advance();
+        }
+    }
+}
+
+//==============================================================================
+// Voice Mixer - Combines all sources before pickup
+//==============================================================================
+
+processor VoiceMixer
+{
+    input stream float tineIn;
+    input stream float toneBarIn;
+    input stream float hammerIn;
+    input stream float noteOffIn;
+    output stream float audioOut;
+    input event EPMK1::Params paramsIn;
+
+    EPMK1::Params params;
+
+    event paramsIn (EPMK1::Params p) { params = p; }
+
+    void main()
+    {
+        loop
+        {
+            // Tine send controls how much tine goes to pickup
+            float tineSend = pow(10.0f, params.tineSend / 20.0f);
+            float mixed = tineIn * tineSend + toneBarIn + hammerIn + noteOffIn;
+            audioOut <- mixed;
+            advance();
+        }
+    }
+}
+
+//==============================================================================
+// Master Gain
+//==============================================================================
+
+processor MasterGain
+{
+    input stream float in;
+    output stream float out;
+    input event EPMK1::Params paramsIn;
+
+    EPMK1::Params params;
+    float currentGain = 1.0f;
+
+    event paramsIn (EPMK1::Params p)
+    {
+        params = p;
+        currentGain = pow(10.0f, params.masterLevel / 20.0f);
+    }
+
+    void main()
+    {
+        loop
+        {
+            out <- in * currentGain;
+            advance();
+        }
+    }
+}
+
+//==============================================================================
+// Tremolo Effect
+//==============================================================================
+
+processor TremoloEffect
+{
+    input stream float in;
+    output stream float<2> out;
+    input event EPMK1::Params paramsIn;
+
+    EPMK1::Params params;
+    float lfoPhase = 0.0f;
+
+    event paramsIn (EPMK1::Params p) { params = p; }
+
+    void main()
+    {
+        loop
+        {
+            float x = in;
+
+            if (params.tremoloOn)
+            {
+                // LFO with shape control (0=sine, 127=triangle)
+                float lfoInc = params.tremoloRate / float(processor.frequency);
+                lfoPhase += lfoInc;
+                if (lfoPhase >= 1.0f) lfoPhase -= 1.0f;
+
+                float lfo;
+                float shape = params.tremoloShape / 127.0f;
+                
+                // Morph between sine and triangle
+                float sine = sin(lfoPhase * float(twoPi));
+                // Generate proper triangle wave: maps phase [0,1] to triangle [-1,1]
+                float triangle = 4.0f * abs(lfoPhase - 0.5f) - 1.0f;
+                lfo = sine * (1.0f - shape) + triangle * shape;
+
+                // Apply depth
+                float depth = pow(10.0f, params.tremoloDepth / 20.0f);
+                float mod = 1.0f + lfo * depth;
+
+                // Stereo panning based on LFO (pan=0 is left, pan=1 is right)
+                float pan = (lfo + 1.0f) * 0.5f;  // 0..1
+                out <- float<2>(x * mod * sqrt(pan), x * mod * sqrt(1.0f - pan));
+            }
+            else
+            {
+                // Bypass: mono to stereo
+                out <- float<2>(x * 0.707f, x * 0.707f);
+            }
+
+            advance();
+        }
     }
 }

@@ -1,0 +1,357 @@
+/*
+    Electric Piano MK1
+    
+    Based on the DX7-style FM synthesis approach used in classic electric pianos.
+    This implementation uses 4 operators with specific algorithms to create
+    bell-like tones characteristic of the Rhodes-style electric piano sound.
+*/
+
+// Move namespace EPMK1 with Params struct here, before the main graph
+namespace EPMK1
+{
+    struct Params
+    {
+        float32 attack;
+        float32 decay;
+        float32 sustain;
+        float32 release;
+        float32 modDepth;
+        float32 bellAmount;
+        float32 tineAmount;
+        float32 releaseAmount;
+        float32 velocitySens;
+        float32 chorus;
+    }
+
+    Params createDefaultParams()
+    {
+        Params p;
+        p.attack = 0.001f;
+        p.decay = 0.3f;
+        p.sustain = 0.7f;
+        p.release = 0.5f;
+        p.modDepth = 0.5f;
+        p.bellAmount = 0.5f;
+        p.tineAmount = 0.5f;
+        p.releaseAmount = 0.5f;
+        p.velocitySens = 0.5f;
+        p.chorus = 0.3f;
+        return p;
+    }
+}
+
+graph EPMK1  [[ main ]]
+{
+    input event midi::Message midiIn;
+    
+    input event
+    {
+        float32 attack        [[ name: "Attack",         min: 0.001, max: 2.0,   init: 0.001, step: 0.001 ]];
+        float32 decay         [[ name: "Decay",          min: 0.01,  max: 5.0,   init: 0.3,   step: 0.01 ]];
+        float32 sustain       [[ name: "Sustain",        min: 0.0,   max: 1.0,   init: 0.7,   step: 0.01 ]];
+        float32 release       [[ name: "Release",        min: 0.01,  max: 5.0,   init: 0.5,   step: 0.01 ]];
+        float32 modDepth      [[ name: "Mod Depth",      min: 0.0,   max: 1.0,   init: 0.5,   step: 0.01 ]];
+        float32 bellAmount    [[ name: "Bell Amount",    min: 0.0,   max: 1.0,   init: 0.5,   step: 0.01 ]];
+        float32 tineAmount    [[ name: "Tine Amount",    min: 0.0,   max: 1.0,   init: 0.5,   step: 0.01 ]];
+        float32 releaseAmount [[ name: "Release Amount", min: 0.0,   max: 1.0,   init: 0.5,   step: 0.01 ]];
+        float32 velocitySens  [[ name: "Velocity Sens",  min: 0.0,   max: 1.0,   init: 0.5,   step: 0.01 ]];
+        float32 chorus        [[ name: "Chorus",         min: 0.0,   max: 1.0,   init: 0.3,   step: 0.01 ]];
+    }
+    
+    output stream float32<2> audioOut;
+    
+    node
+    {
+        voices = EPVoice[16];
+        chorus = ChorusEffect;
+    }
+    
+    connection
+    {
+        midiIn -> voices;
+        
+        attack        -> voices.attack;
+        decay         -> voices.decay;
+        sustain       -> voices.sustain;
+        release       -> voices.release;
+        modDepth      -> voices.modDepth;
+        bellAmount    -> voices.bellAmount;
+        tineAmount    -> voices.tineAmount;
+        releaseAmount -> voices.releaseAmount;
+        velocitySens  -> voices.velocitySens;
+        
+        voices -> chorus.audioIn;
+        chorus.audioOut -> audioOut;
+        
+        chorus -> chorus.depth;
+    }
+}
+
+processor EPVoice
+{
+    input event
+    {
+        midi::Message midiIn;
+        float32 attack;
+        float32 decay;
+        float32 sustain;
+        float32 release;
+        float32 modDepth;
+        float32 bellAmount;
+        float32 tineAmount;
+        float32 releaseAmount;
+        float32 velocitySens;
+    }
+    
+    output stream float32 audioOut;
+    
+    event midiIn (midi::Message m)
+    {
+        if (m.isNoteOn())
+        {
+            noteOn (m.getNoteNumber(), m.getVelocity());
+        }
+        else if (m.isNoteOff())
+        {
+            noteOff (m.getNoteNumber());
+        }
+    }
+    
+    event attack (float32 v)        { params.attack = v; }
+    event decay (float32 v)         { params.decay = v; }
+    event sustain (float32 v)       { params.sustain = v; }
+    event release (float32 v)       { params.release = v; }
+    event modDepth (float32 v)      { params.modDepth = v; }
+    event bellAmount (float32 v)    { params.bellAmount = v; }
+    event tineAmount (float32 v)    { params.tineAmount = v; }
+    event releaseAmount (float32 v) { params.releaseAmount = v; }
+    event velocitySens (float32 v)  { params.velocitySens = v; }
+    
+    EPMK1::Params params;
+    
+    struct NoteInfo
+    {
+        bool active;
+        int note;
+        float32 phase1, phase2, phase3, phase4;
+        float32 targetVelocity;
+        float32 bendSemitones;
+        int envelopePhase;
+        float32 envelopeLevel;
+        float32 envelopeMultiplier;
+    }
+    
+    NoteInfo[16] notes;
+    int nextNoteIndex;
+    
+    void noteOn (int note, float32 velocity)
+    {
+        let info = &notes[nextNoteIndex];
+        
+        info.active = true;
+        info.note = note;
+        info.phase1 = 0.0f;
+        info.phase2 = 0.0f;
+        info.phase3 = 0.0f;
+        info.phase4 = 0.0f;
+        info.bendSemitones = 0.0f;
+        info.envelopePhase = 0;
+        info.envelopeLevel = 0.0f;
+        
+        let velocityScaled = velocity * 0.00787401574803149606f; // / 127.0
+        let sens = params.velocitySens;
+        info.targetVelocity = (velocityScaled * sens) + ((1.0f - sens) * 0.7f);
+        
+        nextNoteIndex = (nextNoteIndex + 1) % 16;
+    }
+    
+    void noteOff (int note)
+    {
+        for (wrap<16> i)
+        {
+            if (notes[i].active && notes[i].note == note && notes[i].envelopePhase != 3)
+            {
+                notes[i].envelopePhase = 3;
+                return;
+            }
+        }
+    }
+    
+    void main()
+    {
+        params = EPMK1::createDefaultParams();
+        
+        loop
+        {
+            float32 output = 0.0f;
+            
+            for (wrap<16> i)
+            {
+                if (notes[i].active)
+                {
+                    output += generateVoice (notes.at(i));
+                }
+            }
+            
+            audioOut <- output;
+            advance();
+        }
+    }
+    
+    float32 generateVoice (NoteInfo& info)
+    {
+        let frequency = noteToFrequency (info.note);
+        
+        updateEnvelope (info);
+        
+        if (info.envelopeLevel < 0.00001f && info.envelopePhase == 3)
+        {
+            info.active = false;
+            return 0.0f;
+        }
+        
+        let carrierIncrement = frequency / float32(processor.frequency);
+        
+        let modRatio1 = 14.0f;
+        let modRatio2 = 1.0f;
+        let modRatio3 = 3.5f;
+        let modRatio4 = 1.0f;
+        
+        let modIndex1 = params.modDepth * 5.0f * params.bellAmount;
+        let modIndex2 = params.modDepth * 2.0f * params.tineAmount;
+        let modIndex3 = params.modDepth * 1.0f * params.releaseAmount;
+        
+        info.phase1 += carrierIncrement * modRatio1;
+        info.phase2 += carrierIncrement * modRatio2;
+        info.phase3 += carrierIncrement * modRatio3;
+        info.phase4 += carrierIncrement * modRatio4;
+        
+        if (info.phase1 >= 1.0f) info.phase1 -= 1.0f;
+        if (info.phase2 >= 1.0f) info.phase2 -= 1.0f;
+        if (info.phase3 >= 1.0f) info.phase3 -= 1.0f;
+        if (info.phase4 >= 1.0f) info.phase4 -= 1.0f;
+        
+        let modulator1 = sin (info.phase1 * float32(twoPi)) * modIndex1;
+        let modulator2 = sin (info.phase2 * float32(twoPi)) * modIndex2;
+        let modulator3 = sin (info.phase3 * float32(twoPi)) * modIndex3;
+        
+        let modulatedPhase = info.phase4 + modulator1 + modulator2 + modulator3;
+        let carrier = sin (modulatedPhase * float32(twoPi));
+        
+        return carrier * info.envelopeLevel * info.targetVelocity * 0.3f;
+    }
+    
+    void updateEnvelope (NoteInfo& info)
+    {
+        if (info.envelopePhase == 0)
+        {
+            info.envelopeMultiplier = calculateMultiplier (info.envelopeLevel, 1.0f, params.attack);
+            info.envelopePhase = 1;
+        }
+        else if (info.envelopePhase == 1)
+        {
+            info.envelopeLevel *= info.envelopeMultiplier;
+            if (info.envelopeLevel >= 1.0f)
+            {
+                info.envelopeLevel = 1.0f;
+                info.envelopeMultiplier = calculateMultiplier (info.envelopeLevel, params.sustain, params.decay);
+                info.envelopePhase = 2;
+            }
+        }
+        else if (info.envelopePhase == 2)
+        {
+            info.envelopeLevel *= info.envelopeMultiplier;
+            if (info.envelopeLevel <= params.sustain)
+            {
+                info.envelopeLevel = params.sustain;
+            }
+        }
+        else if (info.envelopePhase == 3)
+        {
+            info.envelopeMultiplier = calculateMultiplier (info.envelopeLevel, 0.0f, params.release);
+            info.envelopePhase = 4;
+        }
+        else if (info.envelopePhase == 4)
+        {
+            info.envelopeLevel *= info.envelopeMultiplier;
+        }
+    }
+    
+    float32 calculateMultiplier (float32 startLevel, float32 endLevel, float32 lengthInSeconds)
+    {
+        let samples = lengthInSeconds * float32(processor.frequency);
+        if (samples < 1.0f) samples = 1.0f;
+        return pow (endLevel / max(startLevel, 0.0001f), 1.0f / samples);
+    }
+    
+    float32 noteToFrequency (int note)
+    {
+        return 440.0f * pow (2.0f, (float32(note) - 69.0f) / 12.0f);
+    }
+}
+
+processor ChorusEffect
+{
+    input stream float32 audioIn;
+    output stream float32<2> audioOut;
+    input event float32 depth;
+    
+    float32 chorusDepth = 0.3f;
+    float32[4410] delayBuffer;
+    int writePos;
+    float32 lfoPhase;
+    
+    event depth (float32 v)
+    {
+        chorusDepth = v;
+    }
+    
+    void main()
+    {
+        loop
+        {
+            let input = audioIn;
+            
+            delayBuffer[writePos] = input;
+            
+            lfoPhase += 0.5f / float32(processor.frequency);
+            if (lfoPhase >= 1.0f) lfoPhase -= 1.0f;
+            
+            let lfo1 = sin (lfoPhase * float32(twoPi));
+            let lfo2 = sin ((lfoPhase + 0.25f) * float32(twoPi));
+            
+            let maxDelay = 20.0f;
+            let delay1 = 5.0f + (lfo1 * maxDelay * chorusDepth);
+            let delay2 = 5.0f + (lfo2 * maxDelay * chorusDepth);
+            
+            let readPos1 = float32(writePos) - (delay1 * float32(processor.frequency) / 1000.0f);
+            let readPos2 = float32(writePos) - (delay2 * float32(processor.frequency) / 1000.0f);
+            
+            while (readPos1 < 0.0f) readPos1 += 4410.0f;
+            while (readPos2 < 0.0f) readPos2 += 4410.0f;
+            
+            let delayed1 = readDelayBuffer (readPos1);
+            let delayed2 = readDelayBuffer (readPos2);
+            
+            let dryWet = 0.5f;
+            let leftOut = input * (1.0f - dryWet) + delayed1 * dryWet * 0.7f;
+            let rightOut = input * (1.0f - dryWet) + delayed2 * dryWet * 0.7f;
+            
+            audioOut <- float32<2> (leftOut, rightOut);
+            
+            writePos = (writePos + 1) % 4410;
+            advance();
+        }
+    }
+    
+    float32 readDelayBuffer (float32 pos)
+    {
+        let index = int(pos);
+        let frac = pos - float32(index);
+        
+        let sample1 = delayBuffer[index % 4410];
+        let sample2 = delayBuffer[(index + 1) % 4410];
+        
+        return sample1 + (sample2 - sample1) * frac;
+    }
+}

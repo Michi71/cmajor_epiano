@@ -1,324 +1,257 @@
-//
-//     ,ad888ba,                              88
-//    d8"'    "8b
-//   d8            88,dba,,adba,   ,aPP8A. A8  88     (C)2024 Cmajor Software Ltd
-//   Y8,           88    88    88  88     88  88
-//    Y8a.    .a8P  88    88    88  88,   ,88  88     https://cmajor.dev
-//     '"Y888Y"'   88    88    88  '"8bbP"Y8  88
-//                                           ,88
-//                                        888P"
-//
-//  EP-MK1 Physical Modeled Electric Piano
-//  Converted from Pure Data patch by Mike Moreno
-//  Original:   https://mikemorenoaudio.wordpress.com/2019/01/10/ep-mk1-physical-modeled-electric-piano-vst/
-//
-
-//==============================================================================
-// Parameter Structure
-//==============================================================================
-
 namespace EPMK1
 {
     struct Params
     {
-        // Tine Section
-        float tineRatio1;
-        float tineRatio2;
-        float tineHighpass;
-        float tineDecay;
-        float tineLevel;
-        float tineSend;
-
-        // Tone Bar Section
-        float toneDecay;
-        float toneRelease;
-        float toneLevel;
-        bool  pedalDown;
-
-        // Pickup Section
-        float pickupGain;
-        float pickupLowpass;
-        float pickupSymmetry;
-        float pickupLevel;
-        float pickupAttack;
-        float pickupBuzz;
-        bool  buzzPhase;
-
-        // Hammer Section
-        float hammerLevel;
-        float noteOffLevel;
-
-        // Tremolo Section
-        float tremoloRate;
-        float tremoloShape;
-        float tremoloDepth;
-        bool  tremoloOn;
-
-        // Master
-        float masterLevel;
+        float32 volume;
+        float32 tone;
+        float32 tineLevel;
+        float32 toneBarLevel;
+        float32 release;
+        float32 hammerLevel;
     }
 
     Params createDefaultParams()
     {
         Params p;
-
-        p.tineRatio1 = 7.0f;
-        p.tineRatio2 = 20.0f;
-        p.tineHighpass = 2000.0f;
-        p.tineDecay = 500.0f;
-        p.tineLevel = -30.0f;
-        p.tineSend = -21.0f;
-
-        p.toneDecay = 1000.0f;
-        p.toneRelease = 10.0f;
-        p.toneLevel = -6.0f;
-        p.pedalDown = false;
-
-        p.pickupGain = 15.0f;
-        p.pickupLowpass = 500.0f;
-        p.pickupSymmetry = 15.0f;
-        p.pickupLevel = -12.0f;
-        p.pickupAttack = 0.0f;
-        p.pickupBuzz = -9.0f;
-        p.buzzPhase = true;
-
-        p.hammerLevel = -30.0f;
-        p.noteOffLevel = -24.0f;
-
-        p.tremoloRate = 3.0f;
-        p.tremoloShape = 0.0f;
-        p.tremoloDepth = -9.0f;
-        p.tremoloOn = false;
-
-        p.masterLevel = 0.0f;
-
+        p.volume = 0.0f;
+        p.tone = 0.0f;
+        p.tineLevel = 0.0f;
+        p.toneBarLevel = 0.0f;
+        p.release = 0.0f;
+        p.hammerLevel = -20.0f;
         return p;
     }
 }
 
-graph EPiano  [[ main ]]
+graph EPMK1  [[ main ]]
 {
-    input event std::midi::Message midiIn  [[ name:  "MIDI input" ]];
-    output stream float<2> audioOut  [[ name: "Audio Out" ]];
+    input event
+    {
+        std::midi::Message midiIn;
+        EPMK1::Params paramsIn;
+    }
 
-    // Tine Section
-    input event float tineRatio1    [[ name: "Tine Ratio 1",     min: 0.0,   max: 30.0,   init: 7.0,    text: "Tine/Ratio 1" ]];
-    input event float tineRatio2    [[ name: "Tine Ratio 2",     min:  0.0,   max: 30.0,   init: 20.0,   text: "Tine/Ratio 2" ]];
-    input event float tineHighpass  [[ name: "Tine Highpass",    min: 20.0,  max: 20000.0, init: 2000.0, unit: "Hz", text: "Tine/Highpass" ]];
-    input event float tineDecay     [[ name: "Tine Decay",       min: 1.0,   max: 2000.0, init: 500.0,  text: "Tine/Decay" ]];
-    input event float tineLevel     [[ name:  "Tine Level",       min: -100.0, max: 0.0,   init: -30.0,  unit: "dB", text: "Tine/Level" ]];
-    input event float tineSend      [[ name: "Tine Send",        min: -100.0, max: 24.0,  init: -21.0,  unit: "dB", text:  "Tine/Send" ]];
-
-    // Tone Bar Section
-    input event float toneDecay     [[ name: "Tone Bar Decay",   min: 1.0,   max: 2000.0, init: 1000.0, text: "Tone Bar/Decay" ]];
-    input event float toneRelease   [[ name: "Tone Bar Release", min: 1.0,   max: 2000.0, init: 10.0,   text: "Tone Bar/Release" ]];
-    input event float toneLevel     [[ name:  "Tone Bar Level",   min: -100.0, max: 0.0,   init: -6.0,   unit: "dB", text:  "Tone Bar/Level" ]];
-
-    // Pickup Section
-    input event float pickupGain    [[ name: "Pickup Gain",      min: 0.0,   max: 24.0,  init: 15.0,   unit: "dB", text:  "Pickup/Gain" ]];
-    input event float pickupLowpass [[ name: "Pickup Lowpass",   min: 20.0,  max: 20000.0, init: 500.0, unit: "Hz", text: "Pickup/Lowpass" ]];
-    input event float pickupSymmetry[[ name: "Pickup Symmetry",  min: 0.0,   max: 24.0,  init: 15.0,   unit: "dB", text: "Pickup/Symmetry" ]];
-    input event float pickupLevel   [[ name: "Pickup Level",     min: -100.0, max: 6.0,   init: -12.0,  unit: "dB", text: "Pickup/Level" ]];
-    input event float pickupAttack  [[ name: "Pickup Attack",    min: -100.0, max: 30.0,  init: 0.0,    unit: "dB", text: "Pickup/Attack" ]];
-    input event float pickupBuzz    [[ name: "Pickup Buzz",      min: -100.0, max: 0.0,   init: -9.0,   unit: "dB", text: "Pickup/Buzz" ]];
-    input event bool  buzzPhase     [[ name: "Buzz Phase",       init: true,  text: "Pickup/Buzz Phase" ]];
-
-    // Hammer Section
-    input event float hammerLevel   [[ name: "Hammer Level",     min: -100.0, max: 0.0,   init: -30.0,  unit: "dB", text: "Hammer/Level" ]];
-    input event float noteOffLevel  [[ name:  "Note-off Level",   min: -100.0, max: 0.0,   init: -24.0,  unit: "dB", text: "Hammer/Note-off" ]];
-
-    // Tremolo Section
-    input event float tremoloRate   [[ name: "Tremolo Rate",     min: 0.0,   max: 20.0,  init: 3.0,    unit: "Hz", text: "Tremolo/Rate" ]];
-    input event float tremoloShape  [[ name: "Tremolo Shape",    min: 0.0,   max: 127.0, init: 0.0,    text: "Tremolo/Shape" ]];
-    input event float tremoloDepth  [[ name: "Tremolo Depth",    min:  -100.0, max: 0.0,   init: -9.0,   unit: "dB", text: "Tremolo/Depth" ]];
-    input event bool  tremoloOn     [[ name: "Tremolo On",       init: false,  text: "Tremolo/On" ]];
-
-    // Master
-    input event float masterLevel   [[ name:  "Master Level",     min: -100.0, max: 0.0,   init: 0.0,    unit: "dB", text: "Master/Level" ]];
+    output stream float audioOut0;
+    output stream float audioOut1;
 
     node
     {
-        voices          = Voice[64];
-        voiceAllocator  = std::voices:: VoiceAllocator(64);
-        masterGain      = MasterGain;
-        tremolo         = TremoloEffect;
-        paramCollector  = ParamCollector;
+        voiceAllocator = std::voices::VoiceAllocator(16);
+        voices = EPMK1Voice[16];
+        mixer = std::mixers::DynamicSum(float, 16);
+        stereoMixer = std::mixers::FixedSum(float, 2);
     }
 
     connection
     {
-        midiIn -> std::midi::MPEConverter -> voiceAllocator -> voices. eventsIn;
+        midiIn -> std::midi::MPEConverter -> voiceAllocator;
+        paramsIn -> voices.paramsIn;
 
-        // Connect all parameters to collector
-        tineRatio1    -> paramCollector.tineRatio1;
-        tineRatio2    -> paramCollector. tineRatio2;
-        tineHighpass  -> paramCollector.tineHighpass;
-        tineDecay     -> paramCollector.tineDecay;
-        tineLevel     -> paramCollector.tineLevel;
-        tineSend      -> paramCollector.tineSend;
-        toneDecay     -> paramCollector.toneDecay;
-        toneRelease   -> paramCollector.toneRelease;
-        toneLevel     -> paramCollector.toneLevel;
-        pickupGain    -> paramCollector.pickupGain;
-        pickupLowpass -> paramCollector.pickupLowpass;
-        pickupSymmetry-> paramCollector.pickupSymmetry;
-        pickupLevel   -> paramCollector.pickupLevel;
-        pickupAttack  -> paramCollector.pickupAttack;
-        pickupBuzz    -> paramCollector.pickupBuzz;
-        buzzPhase     -> paramCollector.buzzPhase;
-        hammerLevel   -> paramCollector.hammerLevel;
-        noteOffLevel  -> paramCollector.noteOffLevel;
-        tremoloRate   -> paramCollector.tremoloRate;
-        tremoloShape  -> paramCollector.tremoloShape;
-        tremoloDepth  -> paramCollector.tremoloDepth;
-        tremoloOn     -> paramCollector.tremoloOn;
-        masterLevel   -> paramCollector. masterLevel;
+        voiceAllocator.voiceEventOut -> voices.eventsIn;
+        voices.audioOut -> mixer.audioIn;
 
-        paramCollector.paramsOut -> voices.paramsIn, masterGain. paramsIn, tremolo.paramsIn;
+        mixer.audioOut -> stereoMixer.audioIn[0];
+        mixer.audioOut -> stereoMixer.audioIn[1];
 
-        voices.audioOut -> masterGain.in;
-        masterGain.out  -> tremolo.in;
-        tremolo.out     -> audioOut;
+        stereoMixer.audioOut -> audioOut0;
+        stereoMixer.audioOut -> audioOut1;
     }
 }
 
-//==============================================================================
-// Parameter Collector
-//==============================================================================
-
-processor ParamCollector
+graph EPMK1Voice
 {
-    output event EPMK1::Params paramsOut;
-
-    input event float tineRatio1;
-    input event float tineRatio2;
-    input event float tineHighpass;
-    input event float tineDecay;
-    input event float tineLevel;
-    input event float tineSend;
-    input event float toneDecay;
-    input event float toneRelease;
-    input event float toneLevel;
-    input event float pickupGain;
-    input event float pickupLowpass;
-    input event float pickupSymmetry;
-    input event float pickupLevel;
-    input event float pickupAttack;
-    input event float pickupBuzz;
-    input event bool  buzzPhase;
-    input event float hammerLevel;
-    input event float noteOffLevel;
-    input event float tremoloRate;
-    input event float tremoloShape;
-    input event float tremoloDepth;
-    input event bool  tremoloOn;
-    input event float masterLevel;
-
-    EPMK1::Params params = EPMK1::createDefaultParams();
-
-    void main()
+    input event
     {
-        paramsOut <- params;
-        advance();
-        
-        loop { advance(); }
+        EPMK1::Params paramsIn;
+        std::notes::NoteOn eventsIn;
     }
-
-    event tineRatio1    (float f) { params.tineRatio1    = f; paramsOut <- params; }
-    event tineRatio2    (float f) { params.tineRatio2    = f; paramsOut <- params; }
-    event tineHighpass  (float f) { params.tineHighpass  = f; paramsOut <- params; }
-    event tineDecay     (float f) { params.tineDecay     = f; paramsOut <- params; }
-    event tineLevel     (float f) { params.tineLevel     = f; paramsOut <- params; }
-    event tineSend      (float f) { params.tineSend      = f; paramsOut <- params; }
-    event toneDecay     (float f) { params.toneDecay     = f; paramsOut <- params; }
-    event toneRelease   (float f) { params.toneRelease   = f; paramsOut <- params; }
-    event toneLevel     (float f) { params.toneLevel     = f; paramsOut <- params; }
-    event pickupGain    (float f) { params.pickupGain    = f; paramsOut <- params; }
-    event pickupLowpass (float f) { params.pickupLowpass = f; paramsOut <- params; }
-    event pickupSymmetry(float f) { params.pickupSymmetry= f; paramsOut <- params; }
-    event pickupLevel   (float f) { params.pickupLevel   = f; paramsOut <- params; }
-    event pickupAttack  (float f) { params.pickupAttack  = f; paramsOut <- params; }
-    event pickupBuzz    (float f) { params.pickupBuzz    = f; paramsOut <- params; }
-    event buzzPhase     (bool b)  { params.buzzPhase     = b; paramsOut <- params; }
-    event hammerLevel   (float f) { params.hammerLevel   = f; paramsOut <- params; }
-    event noteOffLevel  (float f) { params.noteOffLevel  = f; paramsOut <- params; }
-    event tremoloRate   (float f) { params.tremoloRate   = f; paramsOut <- params; }
-    event tremoloShape  (float f) { params.tremoloShape  = f; paramsOut <- params; }
-    event tremoloDepth  (float f) { params.tremoloDepth  = f; paramsOut <- params; }
-    event tremoloOn     (bool b)  { params.tremoloOn     = b; paramsOut <- params; }
-    event masterLevel   (float f) { params.masterLevel   = f; paramsOut <- params; }
-}
-
-//==============================================================================
-// Voice
-//==============================================================================
-
-graph Voice
-{
-    input event EPMK1::Params paramsIn;
-    input event (std::notes::NoteOn, std::notes::NoteOff) eventsIn;
 
     output stream float audioOut;
 
     node
     {
-        tineModel    = TineModel;
-        toneBarModel = ToneBarModel;
-        pickupModel  = PickupModel;
-        hammerNoise  = HammerNoise;
-        noteOffNoise = NoteOffNoise;
-        mixer        = VoiceMixer;
+        tine = TineModel;
+        toneBar = ToneBarModel;
+        hammerNoise = HammerNoise;
+        mixer = std::mixers::FixedSum(float, 3);
+        toneControl = ToneControl;
+        envelope = ADSREnvelope;
+        attenuator = std::levels::SmoothedGain(float, 0.1f);
     }
 
     connection
     {
-        paramsIn -> tineModel.paramsIn, toneBarModel.paramsIn, pickupModel.paramsIn,
-                    hammerNoise.paramsIn, noteOffNoise.paramsIn, mixer.paramsIn;
-        eventsIn -> tineModel.eventsIn, toneBarModel.eventsIn, hammerNoise.eventsIn, noteOffNoise.eventsIn;
+        paramsIn -> tine.paramsIn,
+                    toneBar.paramsIn,
+                    hammerNoise.paramsIn,
+                    toneControl.paramsIn,
+                    envelope.paramsIn,
+                    attenuator.paramsIn;
 
-        tineModel.audioOut    -> mixer.tineIn;
-        toneBarModel.audioOut -> mixer. toneBarIn;
-        hammerNoise.audioOut  -> mixer.hammerIn;
-        noteOffNoise. audioOut -> mixer.noteOffIn;
-        mixer.audioOut        -> pickupModel.in;
-        pickupModel.out       -> audioOut;
+        eventsIn -> tine.eventsIn,
+                    toneBar.eventsIn,
+                    hammerNoise.eventsIn,
+                    envelope.eventsIn;
+
+        tine.audioOut -> mixer.audioIn[0];
+        toneBar.audioOut -> mixer.audioIn[1];
+        hammerNoise.audioOut -> mixer.audioIn[2];
+
+        mixer.audioOut -> toneControl.audioIn;
+        toneControl.audioOut -> envelope.audioIn;
+        envelope.audioOut -> attenuator.audioIn;
+        attenuator.audioOut -> audioOut;
+    }
+}
+
+processor ToneControl
+{
+    input event EPMK1::Params paramsIn;
+    input stream float audioIn;
+    output stream float audioOut;
+
+    EPMK1::Params params = EPMK1::createDefaultParams();
+    float32 lpY1 = 0.0f;
+    float32 hpY1 = 0.0f;
+    float32 hpX1 = 0.0f;
+    float32 lpA = 0.0f;
+    float32 lpB = 0.0f;
+    float32 hpA = 0.0f;
+    float32 hpB = 0.0f;
+
+    event paramsIn (EPMK1::Params p)
+    {
+        params = p;
+        updateFilterCoeffs();
+    }
+
+    void updateFilterCoeffs()
+    {
+        let toneNorm = (params.tone + 50.0f) / 100.0f;
+        let lpFreq = 300.0f + toneNorm * 8000.0f;
+        let hpFreq = 20.0f + (1.0f - toneNorm) * 200.0f;
+
+        lpB = exp(-float(twoPi) * lpFreq / float(processor.frequency));
+        lpA = 1.0f - lpB;
+
+        hpB = exp(-float(twoPi) * hpFreq / float(processor.frequency));
+        hpA = 1.0f - hpB;
+    }
+
+    void main()
+    {
+        updateFilterCoeffs();
+
+        loop
+        {
+            let input = audioIn;
+
+            lpY1 = lpA * input + lpB * lpY1;
+
+            let hpOut = input - hpA * input - hpB * hpY1;
+            hpY1 = hpOut;
+            hpX1 = input;
+
+            audioOut <- hpOut;
+
+            advance();
+        }
+    }
+}
+
+processor ADSREnvelope
+{
+    input event EPMK1::Params paramsIn;
+    input event std::notes::NoteOn eventsIn;
+    input stream float audioIn;
+    output stream float audioOut;
+
+    EPMK1::Params params = EPMK1::createDefaultParams();
+    float env = 0.0f;
+    bool noteActive = false;
+    float32 releaseRate = 0.0f;
+
+    event paramsIn (EPMK1::Params p)
+    {
+        params = p;
+        updateReleaseRate();
+    }
+
+    event eventsIn (std::notes::NoteOn e)
+    {
+        if (e.velocity > 0.0f)
+        {
+            noteActive = true;
+            env = 1.0f;
+        }
+        else
+        {
+            noteActive = false;
+        }
+    }
+
+    void updateReleaseRate()
+    {
+        let releaseNorm = (params.release + 50.0f) / 100.0f;
+        let releaseTime = 0.05f + releaseNorm * 5.0f;
+        releaseRate = 1.0f / (releaseTime * float(processor.frequency));
+    }
+
+    void main()
+    {
+        updateReleaseRate();
+
+        loop
+        {
+            if (noteActive)
+            {
+                env = 1.0f;
+            }
+            else
+            {
+                env = max(0.0f, env - releaseRate);
+            }
+
+            audioOut <- audioIn * env;
+
+            advance();
+        }
     }
 }
 
 //==============================================================================
 // Tine Model - Two resonators at different ratios
+// Velocity curve: exponential (v^1.5) for natural dynamic response
 //==============================================================================
 
 processor TineModel
 {
-    input event EPMK1:: Params paramsIn;
-    input event (std::notes::NoteOn, std::notes::NoteOff) eventsIn;
+    input event EPMK1::Params paramsIn;
+    input event std::notes::NoteOn eventsIn;
     output stream float audioOut;
 
     EPMK1::Params params = EPMK1::createDefaultParams();
-    float noteFreq = 440.0f;
-    float velocity = 0.8f;
-
-    float phase1 = 0.0f;
-    float phase2 = 0.0f;
-    float amp1 = 0.0f;
-    float amp2 = 0.0f;
+    float64 noteFreq = 0.0;
+    float64 phase1 = 0.0;
+    float64 phase2 = 0.0;
+    float32 amp1 = 0.0f;
+    float32 amp2 = 0.0f;
+    float32 velocity = 0.0f;
     bool noteActive = false;
-
-    // High-pass filter state (one-pole)
-    float hpX1 = 0.0f;
-    float hpY1 = 0.0f;
 
     event paramsIn (EPMK1::Params p) { params = p; }
 
-    event eventsIn (std:: notes::NoteOn e)
+    event eventsIn (std::notes::NoteOn e)
     {
-        noteFreq = std::notes::noteToFrequency(e. pitch);
+        noteFreq = std::notes::noteToFrequency(e.pitch);
         velocity = e.velocity;
         
-        // Initial amplitudes based on velocity
-        amp1 = velocity;
-        amp2 = velocity;
+        // Exponential velocity curve (v^1.5) gives more dynamic range
+        // Soft notes (v=0.2): 0.089, Medium (v=0.5): 0.354, Hard (v=1.0): 1.0
+        float velCurve = pow(velocity, 1.5f);
+        
+        amp1 = velCurve;
+        amp2 = velCurve;
         
         phase1 = 0.0f;
         phase2 = 0.0f;
@@ -326,56 +259,31 @@ processor TineModel
         noteActive = true;
     }
 
-    event eventsIn (std::notes::NoteOff e)
-    {
-        noteActive = false;
-    }
-
     void main()
     {
         loop
         {
-            if (noteActive || amp1 > 0.00001f || amp2 > 0.00001f)
+            if (noteActive && amp1 > 0.0001f)
             {
-                // Generate two tine partials at different ratios
-                float freq1 = noteFreq * params.tineRatio1;
-                float freq2 = noteFreq * params.tineRatio2;
+                let freq1 = noteFreq;
+                let freq2 = noteFreq * 4.0;
 
-                float incr1 = float(twoPi * freq1 * processor.period);
-                float incr2 = float(twoPi * freq2 * processor.period);
+                phase1 = addModulo2Pi(phase1, float64(twoPi) * freq1 / float64(processor.frequency));
+                phase2 = addModulo2Pi(phase2, float64(twoPi) * freq2 / float64(processor.frequency));
 
-                phase1 += incr1;
-                phase2 += incr2;
+                let osc1 = sin(phase1) * amp1;
+                let osc2 = sin(phase2) * amp2 * 0.25f;
 
-                while (phase1 >= float(twoPi)) phase1 -= float(twoPi);
-                while (phase2 >= float(twoPi)) phase2 -= float(twoPi);
+                let level = pow(10.0f, params.tineLevel / 20.0f);
+                audioOut <- (osc1 + osc2) * level;
 
-                float osc1 = sin(phase1);
-                float osc2 = sin(phase2);
-
-                // Apply decay
-                float decayFactor = exp(-1.0f / (params.tineDecay * 0.001f * float(processor.frequency)));
-                amp1 *= decayFactor;
-                amp2 *= decayFactor;
-
-                float mixed = (osc1 * amp1 + osc2 * amp2) * 0.5f;
-
-                // High-pass filter (one-pole)
-                float hpFreq = params.tineHighpass;
-                float hpB = exp(-float(twoPi) * hpFreq / float(processor.frequency));
-                float hpA = (1.0f + hpB) * 0.5f;
-                
-                float hpOut = hpA * mixed - hpA * hpX1 + hpB * hpY1;
-                hpX1 = mixed;
-                hpY1 = hpOut;
-
-                // Apply level
-                float level = pow(10.0f, params.tineLevel / 20.0f);
-                audioOut <- hpOut * level;
+                amp1 *= 0.9996f;
+                amp2 *= 0.998f;
             }
             else
             {
                 audioOut <- 0.0f;
+                noteActive = false;
             }
 
             advance();
@@ -385,126 +293,57 @@ processor TineModel
 
 //==============================================================================
 // Tone Bar Model
+// Velocity curve: exponential (v^1.5) for natural dynamic response
 //==============================================================================
 
 processor ToneBarModel
 {
     input event EPMK1::Params paramsIn;
-    input event (std::notes::NoteOn, std::notes::NoteOff) eventsIn;
+    input event std::notes::NoteOn eventsIn;
     output stream float audioOut;
 
-    EPMK1::Params params = EPMK1:: createDefaultParams();
-    float noteFreq = 440.0f;
-    float velocity = 0.8f;
-
-    float phase = 0.0f;
-    float amp = 0.0f;
+    EPMK1::Params params = EPMK1::createDefaultParams();
+    float64 noteFreq = 0.0;
+    float64 phase = 0.0;
+    float32 amp = 0.0f;
+    float32 velocity = 0.0f;
     bool noteActive = false;
 
-    event paramsIn (EPMK1:: Params p) { params = p; }
+    event paramsIn (EPMK1::Params p) { params = p; }
 
     event eventsIn (std::notes::NoteOn e)
     {
         noteFreq = std::notes::noteToFrequency(e.pitch);
         velocity = e.velocity;
-        amp = velocity;
+        
+        // Exponential velocity curve (v^1.5) gives more dynamic range
+        float velCurve = pow(velocity, 1.5f);
+        amp = velCurve;
+        
         phase = 0.0f;
         noteActive = true;
     }
 
-    event eventsIn (std::notes::NoteOff e)
-    {
-        if (! params.pedalDown)
-            noteActive = false;
-    }
-
     void main()
     {
         loop
         {
-            if (amp > 0.00001f)
+            if (noteActive && amp > 0.0001f)
             {
-                float incr = float(twoPi * noteFreq * processor.period);
-                phase += incr;
-                while (phase >= float(twoPi)) phase -= float(twoPi);
+                phase = addModulo2Pi(phase, float64(twoPi) * noteFreq / float64(processor.frequency));
 
-                float osc = sin(phase);
+                let osc = sin(phase) * amp;
 
-                // Apply decay or release
-                float rate = noteActive ? params.toneDecay : params.toneRelease;
-                float decayFactor = exp(-1.0f / (rate * 0.001f * float(processor.frequency)));
-                amp *= decayFactor;
+                let level = pow(10.0f, params.toneBarLevel / 20.0f);
+                audioOut <- osc * level;
 
-                // Apply level
-                float level = pow(10.0f, params. toneLevel / 20.0f);
-                audioOut <- osc * amp * level;
+                amp *= 0.9993f;
             }
             else
             {
                 audioOut <- 0.0f;
+                noteActive = false;
             }
-
-            advance();
-        }
-    }
-}
-
-//==============================================================================
-// Pickup Model
-//==============================================================================
-
-processor PickupModel
-{
-    input stream float in;
-    output stream float out;
-    input event EPMK1::Params paramsIn;
-
-    EPMK1::Params params = EPMK1::createDefaultParams();
-
-    // Low-pass filter state (one-pole)
-    float lpY1 = 0.0f;
-
-    event paramsIn (EPMK1::Params p) { params = p; }
-
-    void main()
-    {
-        loop
-        {
-            float x = in;
-
-            // Apply input gain
-            float gain = pow(10.0f, params.pickupGain / 20.0f);
-            x *= gain;
-
-            // Asymmetric nonlinearity
-            float sym = pow(10.0f, params. pickupSymmetry / 20.0f);
-            if (x > 0.0f)
-                x *= sym;
-            else
-                x /= sym;
-
-            // Soft clipping
-            x = tanh(x);
-
-            // Buzz effect
-            float buzz = pow(10.0f, params. pickupBuzz / 20.0f);
-            float x2 = x * x;
-            float buzzSig = x2 * x2;
-            if (params.buzzPhase)
-                buzzSig = -buzzSig;
-            x += buzzSig * buzz;
-
-            // Low-pass filter (one-pole)
-            float lpFreq = params.pickupLowpass;
-            float lpB = exp(-float(twoPi) * lpFreq / float(processor.frequency));
-            float lpA = 1.0f - lpB;
-            
-            lpY1 = lpA * x + lpB * lpY1;
-            x = lpY1;
-
-            // Apply output level
-            float level = pow(10.0f, params.pickupLevel / 20.0f);
-            out <- x * level;
 
             advance();
         }
@@ -513,6 +352,7 @@ processor PickupModel
 
 //==============================================================================
 // Hammer Noise
+// Enhanced velocity response with increased dynamic range (2x multiplier)
 //==============================================================================
 
 processor HammerNoise
@@ -522,14 +362,40 @@ processor HammerNoise
     output stream float audioOut;
 
     EPMK1::Params params = EPMK1::createDefaultParams();
-    std::random:: RNG rng;
+    std::random::RNG rng;
     float env = 0.0f;
+    float attackEnv = 0.0f;
+    float velocity = 0.0f;
+    float lpY1 = 0.0f;
+    float lpA = 0.0f;
+    float lpB = 0.0f;
+    float decayFactor = 0.92f;
 
     event paramsIn (EPMK1::Params p) { params = p; }
 
     event eventsIn (std::notes::NoteOn e)
     {
-        env = e.velocity * 0.5f;
+        velocity = clamp(e.velocity, 0.008f, 1.0f);
+        
+        // Enhanced velocity formula with 2x multiplier for more dynamic range
+        // This makes the difference between soft and hard strikes much more audible
+        float midiVel = 1.0f + velocity * 126.0f;
+        float normalizedVel = (midiVel - 1.0f) / 126.0f;
+        float exponent = (1.0f - normalizedVel) * -4.0f;
+        env = pow(2.0f, exponent) * 2.0f;  // 2x multiplier for more dynamic range
+        
+        // Enhanced attack burst with more pronounced effect
+        attackEnv = (velocity > 0.5f) ? (velocity - 0.5f) * 3.0f : 0.0f;
+        
+        // Velocity-sensitive brightness (more extreme range)
+        float lpFreq = 300.0f + velocity * 6000.0f;  // 300 Hz to 6300 Hz
+        lpB = exp(-float(twoPi) * lpFreq / float(processor.frequency));
+        lpA = 1.0f - lpB;
+        
+        // More velocity-sensitive decay
+        decayFactor = 0.90f + velocity * 0.06f;  // Range: 0.90 to 0.96
+        
+        lpY1 = 0.0f;
     }
 
     void main()
@@ -538,162 +404,23 @@ processor HammerNoise
 
         loop
         {
-            if (env > 0.0001f)
+            if (env > 0.0001f || attackEnv > 0.0001f)
             {
                 float noise = rng.getBipolar();
+                
+                lpY1 = lpA * noise + lpB * lpY1;
+                
+                float combinedEnv = env + attackEnv * 0.8f;
+                
                 float level = pow(10.0f, params.hammerLevel / 20.0f);
-                audioOut <- noise * env * level;
-                env *= 0.92f;
+                audioOut <- lpY1 * combinedEnv * level;
+                
+                env *= decayFactor;
+                attackEnv *= 0.85f;
             }
             else
             {
                 audioOut <- 0.0f;
-            }
-
-            advance();
-        }
-    }
-}
-
-//==============================================================================
-// Note-Off Noise
-//==============================================================================
-
-processor NoteOffNoise
-{
-    input event EPMK1::Params paramsIn;
-    input event std::notes::NoteOff eventsIn;
-    output stream float audioOut;
-
-    EPMK1::Params params = EPMK1::createDefaultParams();
-    std::random::RNG rng;
-    float env = 0.0f;
-
-    event paramsIn (EPMK1::Params p) { params = p; }
-
-    event eventsIn (std::notes::NoteOff e)
-    {
-        env = 0.3f;
-    }
-
-    void main()
-    {
-        rng.seed(54321);
-
-        loop
-        {
-            if (env > 0.0001f)
-            {
-                float noise = rng. getBipolar();
-                float level = pow(10.0f, params.noteOffLevel / 20.0f);
-                audioOut <- noise * env * level;
-                env *= 0.90f;
-            }
-            else
-            {
-                audioOut <- 0.0f;
-            }
-
-            advance();
-        }
-    }
-}
-
-//==============================================================================
-// Voice Mixer
-//==============================================================================
-
-processor VoiceMixer
-{
-    input stream float tineIn;
-    input stream float toneBarIn;
-    input stream float hammerIn;
-    input stream float noteOffIn;
-    output stream float audioOut;
-    input event EPMK1::Params paramsIn;
-
-    EPMK1:: Params params = EPMK1::createDefaultParams();
-
-    event paramsIn (EPMK1::Params p) { params = p; }
-
-    void main()
-    {
-        loop
-        {
-            float tineSend = pow(10.0f, params. tineSend / 20.0f);
-            float mixed = tineIn * tineSend + toneBarIn + hammerIn + noteOffIn;
-            audioOut <- mixed;
-            advance();
-        }
-    }
-}
-
-//==============================================================================
-// Master Gain
-//==============================================================================
-
-processor MasterGain
-{
-    input stream float in;
-    output stream float out;
-    input event EPMK1::Params paramsIn;
-
-    EPMK1::Params params = EPMK1::createDefaultParams();
-
-    event paramsIn (EPMK1::Params p) { params = p; }
-
-    void main()
-    {
-        loop
-        {
-            float gain = pow(10.0f, params.masterLevel / 20.0f);
-            out <- in * gain;
-            advance();
-        }
-    }
-}
-
-//==============================================================================
-// Tremolo Effect
-//==============================================================================
-
-processor TremoloEffect
-{
-    input stream float in;
-    output stream float<2> out;
-    input event EPMK1::Params paramsIn;
-
-    EPMK1::Params params = EPMK1::createDefaultParams();
-    float lfoPhase = 0.0f;
-
-    event paramsIn (EPMK1::Params p) { params = p; }
-
-    void main()
-    {
-        loop
-        {
-            float x = in;
-
-            if (params.tremoloOn)
-            {
-                float lfoInc = params.tremoloRate / float(processor.frequency);
-                lfoPhase += lfoInc;
-                if (lfoPhase >= 1.0f) lfoPhase -= 1.0f;
-
-                float shape = params.tremoloShape / 127.0f;
-                float sine = sin(lfoPhase * float(twoPi));
-                float triangle = 4.0f * abs(lfoPhase - 0.5f) - 1.0f;
-                float lfo = sine * (1.0f - shape) + triangle * shape;
-
-                float depth = 1.0f - pow(10.0f, params. tremoloDepth / 20.0f);
-                float mod = 1.0f - (lfo * depth * 0.5f);
-
-                float pan = (lfo + 1.0f) * 0.5f;
-                out <- float<2>(x * mod * sqrt(1.0f - pan), x * mod * sqrt(pan));
-            }
-            else
-            {
-                out <- float<2>(x * 0.707f, x * 0.707f);
             }
 
             advance();

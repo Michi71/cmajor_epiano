@@ -1,0 +1,12 @@
+{
+    "CmajorVersion":    1,
+    "ID":               "dev.mikemorenoaudio.epmk1",
+    "version":          "1.0",
+    "name":             "EP-MK1 Electric Piano",
+    "description":      "Physical model of an electric piano based on Mike Moreno's EP-MK1 Pure Data patch",
+    "category":         "generator",
+    "manufacturer":     "Mike Moreno Audio (Cmajor port)",
+    "isInstrument":     true,
+
+    "source":           "ep-mk1.cmajor"
+}

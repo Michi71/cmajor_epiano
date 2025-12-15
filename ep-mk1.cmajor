@@ -524,12 +524,25 @@ processor HammerNoise
     EPMK1::Params params = EPMK1::createDefaultParams();
     std::random:: RNG rng;
     float env = 0.0f;
+    float attackEnv = 0.0f;
+    float velocity = 0.0f;
+    float lpY1 = 0.0f;
 
     event paramsIn (EPMK1::Params p) { params = p; }
 
     event eventsIn (std::notes::NoteOn e)
     {
-        env = e.velocity * 0.5f;
+        velocity = e.velocity;
+        
+        // Velocity-sensitive amplitude formula: 2^((1-((v-1)/126))*-4)
+        // Gives -24 dB for soft strikes (v=0.008) to 0 dB for hard strikes (v=1.0)
+        float normalizedVel = (velocity * 127.0f - 1.0f) / 126.0f;
+        float amplitudeDb = (1.0f - normalizedVel) * -24.0f;
+        env = pow(2.0f, amplitudeDb / 6.0f);  // Convert dB to linear
+        
+        // Second shorter attack burst for high velocity "growl"
+        // Only active above velocity 0.6
+        attackEnv = (velocity > 0.6f) ? (velocity - 0.6f) * 2.5f : 0.0f;
     }
 
     void main()
@@ -538,12 +551,30 @@ processor HammerNoise
 
         loop
         {
-            if (env > 0.0001f)
+            if (env > 0.0001f || attackEnv > 0.0001f)
             {
                 float noise = rng.getBipolar();
+                
+                // Velocity-sensitive low-pass filter
+                // Low velocity: darker (500 Hz), high velocity: brighter (5000 Hz)
+                float lpFreq = 500.0f + velocity * 4500.0f;
+                float lpB = exp(-float(twoPi) * lpFreq / float(processor.frequency));
+                float lpA = 1.0f - lpB;
+                lpY1 = lpA * noise + lpB * lpY1;
+                
+                // Mix main envelope with attack burst
+                float combinedEnv = env + attackEnv * 0.8f;
+                
                 float level = pow(10.0f, params.hammerLevel / 20.0f);
-                audioOut <- noise * env * level;
-                env *= 0.92f;
+                audioOut <- lpY1 * combinedEnv * level;
+                
+                // Velocity-sensitive decay rate
+                // High velocity: slower decay (more sustain), low velocity: faster decay
+                float decayFactor = 0.92f + velocity * 0.04f;  // Range: 0.92 to 0.96
+                env *= decayFactor;
+                
+                // Attack burst decays much faster
+                attackEnv *= 0.85f;
             }
             else
             {

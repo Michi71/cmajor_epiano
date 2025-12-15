@@ -522,7 +522,7 @@ processor HammerNoise
     output stream float audioOut;
 
     EPMK1::Params params = EPMK1::createDefaultParams();
-    std::random:: RNG rng;
+    std::random::RNG rng;
     float env = 0.0f;
     float attackEnv = 0.0f;
     float velocity = 0.0f;

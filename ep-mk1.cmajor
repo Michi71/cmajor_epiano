@@ -88,7 +88,7 @@ namespace EPMK1
         p.pickupBuzz = -9.0f;
         p.buzzPhase = true;
 
-        p.hammerLevel = -30.0f;
+        p.hammerLevel = -24.0f;  // Increased from -30.0f for more prominent attack
         p.noteOffLevel = -24.0f;
 
         p.tremoloRate = 3.0f;
@@ -135,7 +135,7 @@ graph EPiano  [[ main ]]
     input event bool  buzzPhase     [[ name: "Buzz Phase",       init: true,  text: "Pickup/Buzz Phase" ]];
 
     // Hammer Section
-    input event float hammerLevel   [[ name: "Hammer Level",     min: -100.0, max: 0.0,   init: -30.0,  unit: "dB", text: "Hammer/Level" ]];
+    input event float hammerLevel   [[ name: "Hammer Level",     min: -100.0, max: 0.0,   init: -24.0,  unit: "dB", text: "Hammer/Level" ]];
     input event float noteOffLevel  [[ name:  "Note-off Level",   min: -100.0, max: 0.0,   init: -24.0,  unit: "dB", text: "Hammer/Note-off" ]];
 
     // --- Phaser ---
@@ -578,23 +578,29 @@ processor HammerNoise
     {
         velocity = clamp(e.velocity, 0.008f, 1.0f);
         
-        // Enhanced velocity formula with 2x multiplier for more dynamic range
-        // This makes the difference between soft and hard strikes much more audible
-        float midiVel = 1.0f + velocity * 126.0f;
+        // Enhanced velocity formula with exponential curve for more pronounced attack at high velocities
+        // Based on analysis of real Rhodes behavior: attack should be much sharper at velocities > 0.7
+        // Using power curve (velocity^0.6) to compress low velocities and expand high velocities
+        float velCurve = pow(velocity, 0.6f);  // Less than 1.0 = expands high end
+        float midiVel = 1.0f + velCurve * 126.0f;
         float normalizedVel = (midiVel - 1.0f) / 126.0f;
         float exponent = (1.0f - normalizedVel) * -4.0f;
-        env = pow(2.0f, exponent) * 2.0f;  // 2x multiplier for more dynamic range
+        env = pow(2.0f, exponent) * 3.0f;  // Increased from 2.0x to 3.0x for more dynamic range
         
-        // Enhanced attack burst with more pronounced effect
-        attackEnv = (velocity > 0.5f) ? (velocity - 0.5f) * 3.0f : 0.0f;
+        // Much more pronounced attack burst at high velocities
+        // Real Rhodes has a sharp "click" at velocities above 0.6
+        // Use quadratic curve to make high velocities much more aggressive
+        float attackIntensity = velocity * velocity;  // Quadratic: makes high velocities much stronger
+        attackEnv = (velocity > 0.4f) ? attackIntensity * 4.0f : 0.0f;  // Increased from 3.0f to 4.0f
         
-        // Velocity-sensitive brightness (more extreme range)
-        float lpFreq = 300.0f + velocity * 6000.0f;  // 300 Hz to 6300 Hz
+        // Extended brightness range for more realistic "click" at high velocities
+        // Real Rhodes samples show significant high-frequency content (up to 10kHz) at fff
+        float lpFreq = 200.0f + velocity * 9800.0f;  // Extended from 6300 Hz to 10000 Hz
         lpB = exp(-float(twoPi) * lpFreq / float(processor.frequency));
         lpA = 1.0f - lpB;
         
-        // More velocity-sensitive decay
-        decayFactor = 0.90f + velocity * 0.06f;  // Range: 0.90 to 0.96
+        // More velocity-sensitive decay: faster attack decay at high velocities
+        decayFactor = 0.88f + velocity * 0.08f;  // Range: 0.88 to 0.96 (faster at low vel)
         
         lpY1 = 0.0f;
     }
@@ -611,13 +617,14 @@ processor HammerNoise
                 
                 lpY1 = lpA * noise + lpB * lpY1;
                 
-                float combinedEnv = env + attackEnv * 0.8f;
+                // Increase attack burst contribution for more pronounced hammer strike
+                float combinedEnv = env + attackEnv * 1.2f;  // Increased from 0.8f to 1.2f
                 
                 float level = pow(10.0f, params.hammerLevel / 20.0f);
                 audioOut <- lpY1 * combinedEnv * level;
                 
                 env *= decayFactor;
-                attackEnv *= 0.85f;
+                attackEnv *= 0.80f;  // Faster attack decay (was 0.85f) for sharper transient
             }
             else
             {

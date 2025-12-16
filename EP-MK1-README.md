@@ -49,10 +49,18 @@ Electromagnetic pickup simulation
 - **Buzz Phase** (on/off): Buzz phase inversion (default: on)
 
 ### Hammer Section
-Mechanical hammer noise
+Mechanical hammer noise with enhanced velocity response
 
 - **Hammer Level** (-100-0 dB): Hammer strike noise (default: -24 dB)
-- **Note-off Level** (-100-0 dB): Damper release noise (default: -30 dB)
+- **Note-off Level** (-100-0 dB): Damper release noise (default: -24 dB)
+
+**Velocity Response Enhancements:**
+The hammer attack has been optimized to produce a realistic Rhodes sound across all velocities:
+- **Soft velocities (<0.4)**: Gentle attack with minimal brightness
+- **Medium velocities (0.4-0.7)**: Balanced attack with moderate brightness
+- **Hard velocities (>0.7)**: Sharp, pronounced "click" with extended high-frequency content (up to 10kHz)
+- Uses power curve (velocity^0.6) and quadratic attack burst (velocity²) for authentic dynamic response
+- Filter cutoff range: 200 Hz (soft) to 10000 Hz (hard) for velocity-sensitive brightness
 
 ### Tremolo Section
 Vibrato/tremolo effect
@@ -103,6 +111,12 @@ MIDI Input → Voice Allocator (32 voices)
 2. **Resonator Implementation**: Simplified from biquad filters to direct oscillators for clarity
 3. **Tuning System**: Basic equal temperament implemented; text-based scale loading not yet implemented
 4. **GUI**: Parameter controls are exposed as Cmajor endpoints rather than PD GUI objects
+5. **Hammer Attack Enhancement**: Improved velocity response for more realistic Rhodes attack at high velocities
+   - Power curve (velocity^0.6) expands high-velocity response
+   - Quadratic attack burst (velocity²) for aggressive high-velocity strikes
+   - Extended brightness filter range (200-10000 Hz) for authentic "click" at fortissimo
+   - Increased attack envelope contribution and faster decay for sharper transients
+   - Raised default hammer level from -30 dB to -24 dB for more prominent attack
 
 ## Original Credits
 

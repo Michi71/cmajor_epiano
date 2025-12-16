@@ -54,6 +54,12 @@ namespace EPMK1
         float tremoloDepth;
         bool  tremoloOn;
 
+        // Phaser
+        float phaserDepth;
+        float phaserRate;
+        float phaserFeedback;
+        float phaserMix;
+
         // Master
         float masterLevel;
     }
@@ -89,6 +95,11 @@ namespace EPMK1
         p.tremoloShape = 0.0f;
         p.tremoloDepth = -9.0f;
         p.tremoloOn = false;
+
+        p.phaserDepth = 50.0f;
+        p.phaserRate = 40.0f;
+        p.phaserFeedback = 30.0f;
+        p.phaserMix = 0.0f;
 
         p.masterLevel = 0.0f;
 
@@ -127,6 +138,12 @@ graph EPiano  [[ main ]]
     input event float hammerLevel   [[ name: "Hammer Level",     min: -100.0, max: 0.0,   init: -30.0,  unit: "dB", text: "Hammer/Level" ]];
     input event float noteOffLevel  [[ name:  "Note-off Level",   min: -100.0, max: 0.0,   init: -24.0,  unit: "dB", text: "Hammer/Note-off" ]];
 
+    // --- Phaser ---
+    input event float phaserDepth   [[ name: "Phaser Depth",     min: 0.0, max: 100.0, init: 50, unit: "%" ]];
+    input event float phaserRate    [[ name: "Phaser Rate",      min: 0.0, max: 100.0, init: 40, unit: "%" ]];
+    input event float phaserFeedback[[ name: "Phaser Feedback",  min: 0.0, max: 100.0, init: 30, unit: "%" ]];
+    input event float phaserMix     [[ name: "Phaser Mix",       min: 0.0, max: 100.0, init: 0, unit: "%" ]];
+
     // Tremolo Section
     input event float tremoloRate   [[ name: "Tremolo Rate",     min: 0.0,   max: 20.0,  init: 3.0,    unit: "Hz", text: "Tremolo/Rate" ]];
     input event float tremoloShape  [[ name: "Tremolo Shape",    min: 0.0,   max: 127.0, init: 0.0,    text: "Tremolo/Shape" ]];
@@ -141,6 +158,7 @@ graph EPiano  [[ main ]]
         voices          = Voice[64];
         voiceAllocator  = std::voices::VoiceAllocator(64);
         masterGain      = MasterGain;
+        phaser          = PhaserEffect;        
         tremolo         = TremoloEffect;
         paramCollector  = ParamCollector;
     }
@@ -168,16 +186,21 @@ graph EPiano  [[ main ]]
         buzzPhase     -> paramCollector.buzzPhase;
         hammerLevel   -> paramCollector.hammerLevel;
         noteOffLevel  -> paramCollector.noteOffLevel;
+        phaserDepth   -> paramCollector.phaserDepth;
+        phaserRate    -> paramCollector.phaserRate;
+        phaserFeedback-> paramCollector.phaserFeedback;
+        phaserMix     -> paramCollector.phaserMix;
         tremoloRate   -> paramCollector.tremoloRate;
         tremoloShape  -> paramCollector.tremoloShape;
         tremoloDepth  -> paramCollector.tremoloDepth;
         tremoloOn     -> paramCollector.tremoloOn;
         masterLevel   -> paramCollector.masterLevel;
 
-        paramCollector.paramsOut -> voices.paramsIn, masterGain.paramsIn, tremolo.paramsIn;
+        paramCollector.paramsOut -> voices.paramsIn, masterGain.paramsIn, phaser.paramsIn, tremolo.paramsIn;
 
         voices.audioOut -> masterGain.in;
-        masterGain.out  -> tremolo.in;
+        masterGain.out  -> phaser.in;
+        phaser.out      -> tremolo.in;
         tremolo.out     -> audioOut;
     }
 }
@@ -208,6 +231,10 @@ processor ParamCollector
     input event bool  buzzPhase;
     input event float hammerLevel;
     input event float noteOffLevel;
+    input event float phaserDepth;
+    input event float phaserRate;
+    input event float phaserFeedback;
+    input event float phaserMix;
     input event float tremoloRate;
     input event float tremoloShape;
     input event float tremoloDepth;
@@ -242,6 +269,10 @@ processor ParamCollector
     event buzzPhase     (bool b)  { params.buzzPhase     = b; paramsOut <- params; }
     event hammerLevel   (float f) { params.hammerLevel   = f; paramsOut <- params; }
     event noteOffLevel  (float f) { params.noteOffLevel  = f; paramsOut <- params; }
+    event phaserDepth   (float f) { params.phaserDepth   = f; paramsOut <- params; }
+    event phaserRate    (float f) { params.phaserRate    = f; paramsOut <- params; }
+    event phaserFeedback(float f) { params.phaserFeedback= f; paramsOut <- params; }
+    event phaserMix     (float f) { params.phaserMix     = f; paramsOut <- params; }
     event tremoloRate   (float f) { params.tremoloRate   = f; paramsOut <- params; }
     event tremoloShape  (float f) { params.tremoloShape  = f; paramsOut <- params; }
     event tremoloDepth  (float f) { params.tremoloDepth  = f; paramsOut <- params; }
@@ -739,6 +770,84 @@ processor TremoloEffect
                 out <- float<2>(x * 0.707f, x * 0.707f);
             }
 
+            advance();
+        }
+    }
+}
+
+//==============================================================================
+// PhaserEffect: Simuliert klassische analoge Phaser-Effekte
+//==============================================================================
+
+processor PhaserEffect
+{
+    input  stream float32 in;
+    output stream float32 out;
+    input event EPMK1::Params paramsIn;
+
+    EPMK1::Params params = EPMK1::createDefaultParams();
+    float32 depth    = 0.5f;
+    float32 rate     = 0.4f;
+    float32 feedback = 0.3f;
+    float32 mix      = 0.0f;
+
+    // Phaser-State (All-Pass-Filter)
+    float32[6] allpassState;
+    float32 feedbackState = 0.0f;
+    float32 lfoPhase = 0.0f;
+    // float32 result = 0.0f;  // <-- ENTFERNEN (nicht verwendet)
+
+    event paramsIn (EPMK1::Params p)
+    {
+        params   = p;
+        depth    = p. phaserDepth    * 0.01f;
+        rate     = p.phaserRate     * 0.01f;
+        feedback = p.phaserFeedback * 0.01f;
+        mix      = p.phaserMix      * 0.01f;
+    }
+
+    void main()
+    {
+        loop
+        {
+            float32 x = in + feedbackState * feedback * 0.5f;
+
+            // LFO für Filter-Modulation (typische Phaser-Rate: 0.05 - 2 Hz)
+            float32 lfoFreq = 0.05f + rate * 1.95f;
+            float32 lfoInc = lfoFreq / float32(processor.frequency);
+            
+            lfoPhase += lfoInc;
+            if (lfoPhase >= 1.0f) lfoPhase -= 1.0f;
+
+            // LFO-Wert (Sinuswelle)
+            float32 lfo = sin(lfoPhase * float32(twoPi));
+
+            // All-Pass-Filter-Koeffizienten modulieren
+            // Typischer Phaser verwendet 4-12 All-Pass-Filter in Serie
+            float32 minFreq = 200.0f;
+            float32 maxFreq = 2000.0f;
+            float32 centerFreq = minFreq + (maxFreq - minFreq) * (0.5f + depth * 0.5f * lfo);
+            
+            // Vereinfachter All-Pass-Koeffizient
+            float32 normalizedFreq = centerFreq * float32(twoPi) / float32(processor.frequency);
+            float32 coefficient = (normalizedFreq - 1.0f) / (normalizedFreq + 1.0f);
+
+            // Kaskade von All-Pass-Filtern (6 Stages)
+            float32 filtered = x;
+            
+            for (wrap<6> i)  // <-- wrap<6> statt int
+            {
+                float32 allpassOut = coefficient * filtered + allpassState[i];
+                allpassState[i] = filtered - coefficient * allpassOut;
+                filtered = allpassOut;
+            }
+
+            feedbackState = filtered;
+
+            // Mix Dry/Wet
+            float32 mixed = in * (1.0f - mix) + filtered * mix;
+
+            out <- mixed;
             advance();
         }
     }

@@ -152,7 +152,7 @@ The power curve approach (velocity^0.6) was chosen because:
 2. Provides smooth, musical transition across velocity range
 3. Similar to how real Rhodes hammers behave (non-linear spring response)
 
-Example calculations:
+Example calculations (simplified for illustration - actual implementation includes MIDI velocity conversion and exponential envelope):
 ```
 velocity = 0.2:
   before: 0.2 → env = 0.25

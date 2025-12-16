@@ -600,7 +600,7 @@ processor HammerNoise
         lpA = 1.0f - lpB;
         
         // More velocity-sensitive decay: slower at high velocities for sustain
-        decayFactor = 0.88f + velocity * 0.08f;  // Range: 0.88 to 0.96 (higher = slower decay)
+        decayFactor = 0.88f + velocity * 0.08f;  // Range: 0.88 (v=0) to 0.96 (v=1.0), higher = slower decay
         
         lpY1 = 0.0f;
     }

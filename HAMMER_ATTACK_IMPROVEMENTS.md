@@ -156,7 +156,7 @@ Example calculations:
 ```
 velocity = 0.2:
   before: 0.2 → env = 0.25
-  after:  0.2^0.6 = 0.38 → env = 0.43 (+72%)
+  after:  0.2^0.6 = 0.435 → env = 0.49 (+96%)
 
 velocity = 0.7:
   before: 0.7 → env = 1.12
@@ -172,7 +172,7 @@ velocity = 1.0:
 The quadratic approach (velocity²) was chosen for attack burst because:
 1. Creates exponential increase at high velocities
 2. Keeps low velocities minimal (avoids unwanted click at pp)
-3. Mimics the kinetic energy of hammer strike (E = ½mv²)
+3. Inspired by the velocity-dependent behavior of kinetic energy (though not a direct physical model)
 
 Example calculations:
 ```

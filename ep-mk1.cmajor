@@ -599,8 +599,8 @@ processor HammerNoise
         lpB = exp(-float(twoPi) * lpFreq / float(processor.frequency));
         lpA = 1.0f - lpB;
         
-        // More velocity-sensitive decay: faster attack decay at high velocities
-        decayFactor = 0.88f + velocity * 0.08f;  // Range: 0.88 to 0.96 (faster at low vel)
+        // More velocity-sensitive decay: slower at high velocities for sustain
+        decayFactor = 0.88f + velocity * 0.08f;  // Range: 0.88 to 0.96 (higher = slower decay)
         
         lpY1 = 0.0f;
     }
